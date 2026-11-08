@@ -1,12 +1,20 @@
-{% extends "base.html" %}{% from "_macros.html" import money %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
 {% block title %}Budget{% endblock %}{% block content %}
-<h1>Replacement budget</h1>
-<div class="stats"><div class="stat"><b>{{ money(ten_year) }}</b><span>replacements, next 10 yrs</span></div>
-<div class="stat"><b>{{ money(monthly) }}</b><span>set aside per month</span></div></div>
-<section class="card"><h2>Forecast</h2><table><tr><th>Year</th><th>Items</th><th class="num">Cost</th></tr>
-{% for y, rows, total in forecast %}<tr><td class="{{ 'bad' if y == this_year }}">{{ y }}</td>
-<td>{% for orig, i in rows %}<a href="/items/{{ i.id }}">{{ i.name }}</a>{% if orig < this_year %} <span class="bad">(overdue since {{ orig }})</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</td><td class="num">{{ money(total) }}</td></tr>
-{% else %}<tr><td colspan="3" class="muted">No forecast. Give items a purchase date and expected life.</td></tr>{% endfor %}</table></section>
-{% if untracked %}<section class="card"><h2>Missing lifespan data</h2><p>{% for i in untracked %}<a class="pill" href="/items/{{ i.id }}">{{ i.name }}</a> {% endfor %}</p></section>{% endif %}
-<section class="card"><h2>Maintenance spend by year</h2><table>{% for s in spend %}<tr><td>{{ s.yr }}</td><td class="num">{{ money(s.total) }}</td></tr>{% else %}<tr><td class="muted">No costs logged.</td></tr>{% endfor %}</table></section>
+<div class="page-head"><div><h1>Replacement budget</h1><p>What's wearing out, when, and what to set aside.</p></div></div>
+<div class="stats">
+<div class="stat"><div class="ic">{{ i('trend') }}</div><div><b>{{ money(ten_year) }}</b><span>Replacements, next 10 years</span></div></div>
+<div class="stat"><div class="ic">{{ i('wallet') }}</div><div><b>{{ money(monthly) }}</b><span>Set aside per month</span></div></div>
+<div class="stat"><div class="ic">{{ i('box') }}</div><div><b>{{ untracked|length }}</b><span>Items missing lifespan</span></div></div></div>
+<section class="card accent">{{ head('Forecast by year', 'calendar') }}<div class="card-b">
+{% if forecast %}{% set peak = forecast|map(attribute=2)|max or 1 %}
+{% for y, rows, total in forecast %}<div class="bar-row"><span class="yr {{ 'bad' if y == this_year }}">{{ y }}</span>
+<div><div>{% for orig, it in rows %}<a href="/items/{{ it.id }}">{{ it.name }}</a>{% if orig < this_year %} <span class="badge bad">overdue since {{ orig }}</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</div>
+<div class="bar-track"><div class="bar-fill" style="width:{{ (total / peak * 100)|round(1) if total else 0 }}%"></div></div></div>
+<span class="amt">{{ money(total) }}</span></div>{% endfor %}
+{% else %}{% call empty('trend', 'No forecast yet. Give items a purchase date and expected life.') %}{% endcall %}{% endif %}</div></section>
+<div class="grid">
+{% if untracked %}<section class="card">{{ head('Missing lifespan data', 'alert') }}<div class="card-b"><div class="actions">{% for it in untracked %}<a class="badge" href="/items/{{ it.id }}">{{ it.name }}</a>{% endfor %}</div></div></section>{% endif %}
+<section class="card">{{ head('Maintenance spend by year', 'wallet') }}<div class="card-b">
+{% if spend %}<table class="tbl"><thead><tr><th>Year</th><th class="num">Spent</th></tr></thead><tbody>{% for s in spend %}<tr><td>{{ s.yr }}</td><td class="num">{{ money(s.total) }}</td></tr>{% endfor %}</tbody></table>
+{% else %}{% call empty('wallet', 'No costs logged yet.') %}{% endcall %}{% endif %}</div></section></div>
 {% endblock %}

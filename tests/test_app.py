@@ -20,7 +20,7 @@ def test_pages_render(client):
 
 def test_task_lifecycle(client):
     client.post("/tasks", data={"name": "Filter", "interval_days": 90, "next_due": "2020-01-01"})
-    assert "overdue" in client.get("/tasks").text
+    assert "badge bad" in client.get("/tasks").text
     client.post("/tasks/1/done", data={"done_on": "2026-01-01", "cost": "12.5"})
     from app.db import get_db
     with get_db() as db:
@@ -90,3 +90,45 @@ def test_basic_auth(tmp_path, monkeypatch):
         assert c.get("/", auth=("alan", "nope")).status_code == 401
         assert c.get("/", auth=("alan", "s3cret")).status_code == 200
         assert c.get("/api/health").status_code == 200
+
+
+def _jpeg(color=(200, 80, 40), size=(800, 600)):
+    import io
+    from PIL import Image
+    b = io.BytesIO(); Image.new("RGB", size, color).save(b, "JPEG"); return b.getvalue()
+
+
+def test_item_photos(client, tmp_path):
+    client.post("/items", data={"name": "Fridge"})
+    r = client.post("/photos", data={"item_id": "1", "next": "/items/1"},
+                    files=[("files", ("a.jpg", _jpeg(), "image/jpeg")),
+                           ("files", ("b.jpg", _jpeg((0, 0, 255)), "image/jpeg"))],
+                    follow_redirects=False)
+    assert r.headers["location"] == "/items/1"
+    assert client.get("/photos/1/thumb").content[:2] == b"\xff\xd8"
+    assert 'src="/photos/1/thumb"' in client.get("/items").text
+    client.post("/photos/2/cover", data={"next": "/items/1"})
+    assert 'src="/photos/2/thumb"' in client.get("/items").text
+    bad = client.post("/photos", data={"item_id": "1"}, files=[("files", ("x.jpg", b"nope", "image/jpeg"))])
+    assert bad.status_code == 400
+    client.post("/items/1/delete")
+    assert client.get("/photos/1").status_code == 404
+    assert [p.name for p in (tmp_path / "uploads").iterdir()] == []
+
+
+def test_room_photo(client):
+    client.post("/rooms", data={"name": "Kitchen"})
+    client.post("/photos", data={"room_id": "1"}, files=[("files", ("k.png", _jpeg(), "image/png"))])
+    assert '/photos/1/thumb' in client.get("/items").text
+    assert "Room photo" in client.get("/items?room=1").text
+
+
+def test_theme_cookie(client):
+    r = client.post("/theme", data={"theme": "ocean", "mode": "dark"},
+                    headers={"referer": "http://evil.example/items?room=2"}, follow_redirects=False)
+    assert r.headers["location"] == "/items?room=2"
+    client.cookies.set("theme", "ocean"); client.cookies.set("mode", "dark")
+    html = client.get("/").text
+    assert 'data-theme="ocean"' in html and 'data-mode="dark"' in html
+    client.cookies.set("theme", "bogus")
+    assert 'data-theme="ember"' in client.get("/").text

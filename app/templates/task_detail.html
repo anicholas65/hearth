@@ -1,14 +1,19 @@
-{% extends "base.html" %}{% from "_macros.html" import money %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, due as fmtdue %}
 {% block title %}{{ t.name }}{% endblock %}{% block content %}
-<p><a href="/tasks">← Maintenance</a></p><h1>{{ t.name }}</h1>
-<section class="card"><form class="form" method="post" action="/tasks/{{ t.id }}">
+<a class="crumb" href="/tasks">{{ i('back') }} Maintenance</a>
+<div class="page-head"><div><h1>{{ t.name }}</h1><p>Every {{ t.interval_days }} days · next {{ fmtdue(t.next_due, today) }}</p></div>
+<form method="post" action="/tasks/{{ t.id }}/done"><button>{{ i('check') }} Mark done today</button></form></div>
+<div class="grid">
+<section class="card accent">{{ head('Details', 'sliders') }}<div class="card-b"><form class="form" method="post" action="/tasks/{{ t.id }}">
 <label>Task<input name="name" value="{{ t.name }}" required></label>
 <label>Repeat every (days)<input name="interval_days" type="number" min="1" value="{{ t.interval_days }}" required></label>
 <label>Next due<input name="next_due" type="date" value="{{ t.next_due }}" required></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for i in items %}<option value="{{ i.id }}" {{ 'selected' if i.id == t.item_id }}>{{ i.name }}</option>{% endfor %}</select></label>
-<label>Notes<input name="notes" value="{{ t.notes or '' }}"></label><button>Save</button></form>
-<form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('Delete task and its history?')" style="margin-top:10px"><button class="danger sm">Delete task</button></form></section>
-<section class="card"><h2>History</h2><table><tr><th>Date</th><th>By</th><th class="num">Cost</th><th>Notes</th></tr>
-{% for l in logs %}<tr><td>{{ l.done_on }}</td><td>{{ l.contractor_name or 'DIY' }}</td><td class="num">{{ money(l.cost) }}</td><td>{{ l.notes or '' }}</td></tr>
-{% else %}<tr><td colspan="4" class="muted">Never completed.</td></tr>{% endfor %}</table></section>
+<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == t.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>
+<label class="wide">Notes<textarea name="notes" rows="2">{{ t.notes or '' }}</textarea></label>
+<div class="actions wide"><button>Save</button></div></form>
+<form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('Delete task and its history?')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete task</button></form></div></section>
+<section class="card">{{ head('History', 'clock', '<span class="badge acc">' ~ logs|length ~ '</span>') }}<div class="card-b">
+{% if logs %}<div class="list">{% for l in logs %}<div class="row"><div class="dot ok">{{ i('check') }}</div>
+<div class="grow"><b>{{ l.done_on }}</b><small>{{ l.contractor_name or 'DIY' }}{% if l.notes %} · {{ l.notes }}{% endif %}</small></div><span>{{ money(l.cost) }}</span></div>{% endfor %}</div>
+{% else %}{% call empty('clock', 'Never completed.') %}{% endcall %}{% endif %}</div></section></div>
 {% endblock %}

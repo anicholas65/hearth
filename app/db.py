@@ -47,6 +47,15 @@ CREATE TABLE IF NOT EXISTS documents (
     item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
     uploaded_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+    room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
+    stored_name TEXT NOT NULL UNIQUE,
+    thumb_name TEXT NOT NULL,
+    is_cover INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 """
 
 

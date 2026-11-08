@@ -1,11 +1,17 @@
-{% extends "base.html" %}{% block title %}Documents{% endblock %}{% block content %}
-<h1>Documents</h1>
-<section class="card"><form class="form" method="post" action="/documents" enctype="multipart/form-data">
+{% extends "base.html" %}{% from "_macros.html" import i, head, empty %}
+{% block title %}Documents{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Documents</h1><p>Receipts, manuals, warranties and policies, all in one place.</p></div></div>
+<section class="card accent">{{ head('Upload', 'upload') }}<div class="card-b"><form class="form" method="post" action="/documents" enctype="multipart/form-data">
 <label>File<input type="file" name="file" required></label><label>Title<input name="title" placeholder="Home insurance policy"></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for i in items %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}</select></label><button>Upload</button></form></section>
-<section class="card"><table><tr><th>Title</th><th>Item</th><th>Uploaded</th><th></th></tr>
-{% for d in docs %}<tr><td><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a><br><span class="muted">{{ d.filename }}</span></td>
-<td>{% if d.item_id %}<a href="/items/{{ d.item_id }}">{{ d.item_name }}</a>{% endif %}</td><td class="muted">{{ d.uploaded_at[:10] }}</td>
-<td><form class="inline" method="post" action="/documents/{{ d.id }}/delete" onsubmit="return confirm('Delete document?')"><button class="danger sm">Delete</button></form></td></tr>
-{% else %}<tr><td colspan="4" class="muted">No documents.</td></tr>{% endfor %}</table></section>
+<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label><button>{{ i('upload') }} Upload</button></form></div></section>
+{% if docs %}<div class="tiles">{% for d in docs %}{% set ext = d.filename.rsplit('.',1)[-1]|lower if '.' in d.filename else '' %}
+<div class="tile"><a class="ph" href="/documents/{{ d.id }}/file" target="_blank">
+{% if ext in ['jpg','jpeg','png','webp','gif'] %}<img src="/documents/{{ d.id }}/file" alt="" loading="lazy">{% else %}<div class="placeholder">{{ i('file') }}</div>{% endif %}
+<span class="corner badge glass">{{ ext|upper or 'FILE' }}</span></a>
+<div class="body"><a href="/documents/{{ d.id }}/file" target="_blank" style="color:var(--fg);text-decoration:none"><b>{{ d.title }}</b></a>
+<span class="muted" style="font-size:13px;overflow-wrap:anywhere">{{ d.filename }}</span>
+<div class="meta">{% if d.item_id %}<a class="badge acc" href="/items/{{ d.item_id }}">{{ i('box') }} {{ d.item_name }}</a>{% else %}<span class="badge">{{ d.uploaded_at[:10] }}</span>{% endif %}
+<form class="inline" method="post" action="/documents/{{ d.id }}/delete" onsubmit="return confirm('Delete document?')"><button class="danger icon sm" title="Delete">{{ i('trash') }}</button></form></div></div></div>
+{% endfor %}</div>
+{% else %}<section class="card"><div class="card-b">{% call empty('file', 'No documents yet.') %}{% endcall %}</div></section>{% endif %}
 {% endblock %}

@@ -1,14 +1,21 @@
-{% extends "base.html" %}{% from "_macros.html" import money %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
 {% block title %}Contractors{% endblock %}{% block content %}
-<h1>Contractors</h1>
-<section class="card"><form class="form" method="post" action="/contractors">
+<div class="page-head"><div><h1>Contractors</h1><p>Your trusted pros and what you've spent with them.</p></div></div>
+<section class="card accent">{{ head('Add contractor', 'plus') }}<div class="card-b"><form class="form" method="post" action="/contractors">
 <label>Name<input name="name" required></label><label>Trade<input name="trade" placeholder="Plumber" list="trades"></label>
 <datalist id="trades">{% for t in ['Plumber','Electrician','HVAC','Roofer','Handyman','Landscaper','Pest control','Appliance repair','Painter'] %}<option value="{{ t }}">{% endfor %}</datalist>
-<label>Phone<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label><label>Notes<input name="notes"></label><button>Add</button></form></section>
-<section class="card"><table><tr><th>Name</th><th>Trade</th><th>Contact</th><th class="num">Jobs</th><th class="num">Spent</th><th>Last job</th><th></th></tr>
-{% for c in contractors %}<tr><td>{{ c.name }}{% if c.notes %}<br><span class="muted">{{ c.notes }}</span>{% endif %}</td><td>{{ c.trade or '' }}</td>
-<td>{% if c.phone %}<a href="tel:{{ c.phone }}">{{ c.phone }}</a><br>{% endif %}{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}</td>
-<td class="num">{{ c.jobs }}</td><td class="num">{{ money(c.spent) }}</td><td class="muted">{{ c.last or '' }}</td>
-<td><form class="inline" method="post" action="/contractors/{{ c.id }}/delete" onsubmit="return confirm('Delete contractor?')"><button class="danger sm">Delete</button></form></td></tr>
-{% else %}<tr><td colspan="7" class="muted">No contractors.</td></tr>{% endfor %}</table></section>
+<label>Phone<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label><label>Notes<input name="notes"></label><button>{{ i('plus') }} Add</button></form></div></section>
+{% if contractors %}<div class="tiles">{% for c in contractors %}
+<div class="tile"><div class="body" style="padding:16px">
+<div style="display:flex;gap:12px;align-items:center">
+<div class="dot" style="width:48px;height:48px;border-radius:50%;font-weight:700;font-size:17px">{{ (c.name.split()|map('first')|join)[:2]|upper }}</div>
+<div style="min-width:0"><b>{{ c.name }}</b><br>{% if c.trade %}<span class="badge acc">{{ c.trade }}</span>{% endif %}</div></div>
+{% if c.notes %}<span class="muted" style="font-size:13px">{{ c.notes }}</span>{% endif %}
+<div style="display:flex;flex-direction:column;gap:3px;font-size:14px">
+{% if c.phone %}<a href="tel:{{ c.phone }}">{{ i('phone') }} {{ c.phone }}</a>{% endif %}{% if c.email %}<a href="mailto:{{ c.email }}" style="overflow-wrap:anywhere">{{ i('mail') }} {{ c.email }}</a>{% endif %}</div>
+<div class="meta" style="border-top:1px solid var(--line);padding-top:10px">
+<span class="muted" style="font-size:13px">{{ c.jobs }} job{{ 's' if c.jobs != 1 }} · <b style="color:var(--fg)">{{ money(c.spent) }}</b>{% if c.last %} · last {{ c.last }}{% endif %}</span>
+<form class="inline" method="post" action="/contractors/{{ c.id }}/delete" onsubmit="return confirm('Delete contractor?')"><button class="danger icon sm" title="Delete">{{ i('trash') }}</button></form></div>
+</div></div>{% endfor %}</div>
+{% else %}<section class="card"><div class="card-b">{% call empty('users', 'No contractors yet.') %}{% endcall %}</div></section>{% endif %}
 {% endblock %}

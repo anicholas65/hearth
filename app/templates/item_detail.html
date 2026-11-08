@@ -1,22 +1,46 @@
-{% extends "base.html" %}{% from "_macros.html" import money, due as fmtdue %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, due as fmtdue %}
 {% block title %}{{ item.name }}{% endblock %}{% block content %}
-<p><a href="/items">← Inventory</a></p><h1>{{ item.name }}</h1>
+<a class="crumb" href="/items{{ '?room=' ~ item.room_id if item.room_id }}">{{ i('back') }} {{ item.room_name or 'Inventory' }}</a>
+<section class="card">
+{% if photos %}<a href="/photos/{{ photos[0].id }}" target="_blank"><img class="hero-photo" src="/photos/{{ photos[0].id }}" alt="{{ item.name }}"></a>{% endif %}
+<div class="card-b"><div class="page-head" style="margin:0"><div><h1>{{ item.name }}</h1>
+<p>{{ item.brand or '' }} {{ item.model or '' }}{% if item.serial %} · S/N <code>{{ item.serial }}</code>{% endif %}{% if item.room_name %} · <span class="badge">{{ i('door') }} {{ item.room_name }}</span>{% endif %}</p></div></div></div></section>
+
 <div class="stats">
-<div class="stat"><b>{{ money(item.price) }}</b><span>purchase price</span></div>
-<div class="stat"><b>{{ item.warranty_until or '—' }}</b><span>warranty</span></div>
-<div class="stat"><b>{{ replace_year or '—' }}</b><span>est. replacement</span></div>
-<div class="stat"><b>{{ money(item.replace_cost) }}</b><span>replacement cost</span></div></div>
+<div class="stat"><div class="ic">{{ i('wallet') }}</div><div><b>{{ money(item.price) }}</b><span>Purchase price</span></div></div>
+<div class="stat"><div class="ic">{{ i('shield') }}</div><div><b class="{{ 'ok' if item.warranty_until and item.warranty_until >= today }}">{{ item.warranty_until or '—' }}</b><span>Warranty</span></div></div>
+<div class="stat"><div class="ic">{{ i('trend') }}</div><div><b class="{{ 'bad' if replace_year and replace_year <= today[:4]|int }}">{{ replace_year or '—' }}</b><span>Est. replacement</span></div></div>
+<div class="stat"><div class="ic">{{ i('wallet') }}</div><div><b>{{ money(item.replace_cost) }}</b><span>Replacement cost</span></div></div></div>
+
+<section class="card">{{ head('Photos', 'camera', '<span class="badge acc">' ~ photos|length ~ '</span>') }}<div class="card-b">
+{% if photos %}<div class="gallery" style="margin-bottom:14px">{% for p in photos %}
+<figure class="{{ 'cover' if loop.first }}"><a href="/photos/{{ p.id }}" target="_blank"><img src="/photos/{{ p.id }}/thumb" alt="" loading="lazy"></a>
+{% if loop.first %}<span class="tag badge glass">{{ i('star') }} Cover</span>{% endif %}
+<div class="acts">{% if not loop.first %}<form method="post" action="/photos/{{ p.id }}/cover"><input type="hidden" name="next" value="/items/{{ item.id }}"><button class="icon sm" title="Make cover">{{ i('star') }}</button></form>{% endif %}
+<form method="post" action="/photos/{{ p.id }}/delete" onsubmit="return confirm('Delete photo?')"><input type="hidden" name="next" value="/items/{{ item.id }}"><button class="icon sm" title="Delete">{{ i('trash') }}</button></form></div></figure>
+{% endfor %}</div>{% endif %}
+<form class="actions" method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
+<input type="file" name="files" accept="image/*" multiple required style="max-width:320px"><button class="ghost">{{ i('upload') }} Upload photos</button></form>
+<p class="muted" style="margin:8px 0 0;font-size:13px">Photograph the item, its label/serial plate and receipt. Useful for insurance claims.</p></div></section>
+
 <div class="grid">
-<section class="card"><h2>Documents & manuals</h2>
-{% for d in docs %}<p><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a> <span class="muted">{{ d.uploaded_at[:10] }}</span></p>{% else %}<p class="muted">None attached.</p>{% endfor %}
+<section class="card">{{ head('Documents & manuals', 'file') }}<div class="card-b">
+{% if docs %}<div class="list" style="margin-bottom:12px">{% for d in docs %}<div class="row"><div class="dot">{{ i('file') }}</div>
+<div class="grow"><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a><small>{{ d.uploaded_at[:10] }}</small></div></div>{% endfor %}</div>
+{% else %}{% call empty('file', 'No documents attached.') %}{% endcall %}{% endif %}
 <form class="form" method="post" action="/documents" enctype="multipart/form-data"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
-<label>File<input type="file" name="file" required></label><label>Title<input name="title" placeholder="Owner's manual"></label><button class="ghost">Upload</button></form></section>
-<section class="card"><h2>Maintenance</h2>
-{% for t in tasks %}<p><a href="/tasks/{{ t.id }}">{{ t.name }}</a> · {{ fmtdue(t.next_due, today) }}</p>{% else %}<p class="muted">No tasks linked.</p>{% endfor %}
+<label>File<input type="file" name="file" required></label><label>Title<input name="title" placeholder="Owner's manual"></label><button class="ghost">{{ i('upload') }} Upload</button></form></div></section>
+<section class="card">{{ head('Maintenance', 'wrench') }}<div class="card-b">
+{% if tasks %}<div class="list" style="margin-bottom:12px">{% for t in tasks %}<div class="row"><div class="dot">{{ i('wrench') }}</div>
+<div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name }}</a><small>every {{ t.interval_days }} days</small></div>{{ fmtdue(t.next_due, today) }}</div>{% endfor %}</div>
+{% else %}{% call empty('wrench', 'No tasks linked.') %}{% endcall %}{% endif %}
 <form class="form" method="post" action="/tasks"><input type="hidden" name="item_id" value="{{ item.id }}">
-<label>Task<input name="name" required></label><label>Every (days)<input name="interval_days" type="number" min="1" value="180" required></label><button class="ghost">Add</button></form>
-{% if history %}<h2 style="margin-top:14px">Service history</h2><table>{% for l in history %}<tr><td>{{ l.done_on }}</td><td>{{ l.task_name }}</td><td class="num">{{ money(l.cost) }}</td></tr>{% endfor %}</table>{% endif %}
-</section></div>
-<section class="card"><h2>Details</h2><form class="form" method="post" action="/items/{{ item.id }}">{% include "_item_form.html" %}<button>Save</button></form>
-<form method="post" action="/items/{{ item.id }}/delete" onsubmit="return confirm('Delete item?')" style="margin-top:10px"><button class="danger sm">Delete item</button></form></section>
+<label>Task<input name="name" required placeholder="Clean coils"></label><label>Every (days)<input name="interval_days" type="number" min="1" value="180" required></label><button class="ghost">{{ i('plus') }} Add</button></form>
+{% if history %}<h2 style="margin:18px 0 6px">{{ i('clock') }} Service history</h2><div class="list">{% for l in history %}<div class="row"><div class="dot ok">{{ i('check') }}</div>
+<div class="grow"><b>{{ l.task_name }}</b><small>{{ l.done_on }}</small></div><span>{{ money(l.cost) }}</span></div>{% endfor %}</div>{% endif %}
+</div></section></div>
+
+<section class="card">{{ head('Details', 'sliders') }}<div class="card-b">
+<form class="form" method="post" action="/items/{{ item.id }}">{% include "_item_form.html" %}<div class="wide"><button>Save changes</button></div></form>
+<form method="post" action="/items/{{ item.id }}/delete" onsubmit="return confirm('Delete item and its photos?')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete item</button></form></div></section>
 {% endblock %}

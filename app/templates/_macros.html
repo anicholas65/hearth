@@ -1,4 +1,7 @@
+{% macro i(n, cls='') -%}<svg class="i {{ cls }}" aria-hidden="true"><use href="#i-{{ n }}"/></svg>{%- endmacro %}
 {% macro due(d, today) -%}
-{% if d < today %}<span class="bad">{{ d }} · overdue</span>{% elif d == today %}<span class="warn">today</span>{% else %}{{ d }}{% endif %}
+{% if d < today %}<span class="badge bad">{{ i('alert') }} {{ d }}</span>{% elif d == today %}<span class="badge warn">{{ i('clock') }} Today</span>{% else %}<span class="badge">{{ i('calendar') }} {{ d }}</span>{% endif %}
 {%- endmacro %}
 {% macro money(v) -%}{% if v %}${{ "{:,.0f}".format(v) }}{% else %}<span class="muted">—</span>{% endif %}{%- endmacro %}
+{% macro head(title, icon, actions='') -%}<div class="card-h"><h2>{{ i(icon) }} {{ title }}</h2>{{ actions|safe }}</div>{%- endmacro %}
+{% macro empty(icon, text) -%}<div class="empty">{{ i(icon) }}<div>{{ text }}</div>{{ caller() if caller }}</div>{%- endmacro %}

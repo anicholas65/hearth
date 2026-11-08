@@ -1,17 +1,36 @@
-{% extends "base.html" %}{% from "_macros.html" import money %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
 {% block title %}Inventory{% endblock %}{% block content %}
-<h1>Inventory</h1>
-<section class="card"><h2>Rooms</h2><p>
-<a class="pill {{ 'on' if not room }}" href="/items">All</a>
-{% for r in rooms %}<a class="pill {{ 'on' if room == r.id }}" href="/items?room={{ r.id }}">{{ r.name }} · {{ r.n }}</a> {% endfor %}</p>
-<form class="form" method="post" action="/rooms" style="max-width:420px"><label>New room<input name="name" required placeholder="Kitchen"></label><button class="ghost">Add room</button></form>
-{% if room %}<form method="post" action="/rooms/{{ room }}/delete" onsubmit="return confirm('Delete room? Items are kept.')" style="margin-top:8px"><button class="danger sm">Delete this room</button></form>{% endif %}
-</section>
-<section class="card"><details {{ 'open' if not items }}><summary><b>Add item</b></summary>
-<form class="form" method="post" action="/items" style="margin-top:10px">{% set item = None %}{% include "_item_form.html" %}<button>Add item</button></form></details></section>
-<section class="card"><table><tr><th>Item</th><th>Room</th><th>Brand / model</th><th>Warranty</th><th class="num">Value</th></tr>
-{% for i in items %}<tr><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td>{{ i.room_name or '' }}</td><td class="muted">{{ i.brand or '' }} {{ i.model or '' }}</td>
-<td>{% if i.warranty_until %}<span class="{{ 'muted' if i.warranty_until < today else 'ok' }}">{{ i.warranty_until }}</span>{% endif %}</td><td class="num">{{ money(i.price) }}</td></tr>
-{% else %}<tr><td colspan="5" class="muted">No items.</td></tr>{% endfor %}
-{% if items %}<tr><th colspan="4">Total</th><th class="num">{{ money(total) }}</th></tr>{% endif %}</table></section>
+<div class="page-head"><div><h1>{{ current.name if current else 'Inventory' }}</h1>
+<p>{{ items|length }} item{{ 's' if items|length != 1 }} · {{ money(total) }} total value</p></div>
+<a class="btn" href="#add">{{ i('plus') }} Add item</a></div>
+
+<div class="rooms">
+<a class="room all {{ 'on' if not room }}" href="/items"><span class="glyph">{{ i('home') }}</span><span class="lbl"><b>All rooms</b></span></a>
+{% for r in rooms %}<a class="room {{ 'on' if room == r.id }}" href="/items?room={{ r.id }}">
+{% if r.cover %}<img src="/photos/{{ r.cover }}/thumb" alt="" loading="lazy">{% else %}<span class="glyph">{{ i('door') }}</span>{% endif %}
+<span class="lbl"><b>{{ r.name }}</b><small>{{ r.n }} · {{ money(r.value) }}</small></span></a>{% endfor %}
+</div>
+
+{% if current %}<section class="card">{{ head('Room photo', 'camera') }}<div class="card-b actions">
+<form class="actions" method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="room_id" value="{{ current.id }}"><input type="hidden" name="next" value="/items?room={{ current.id }}">
+<input type="file" name="files" accept="image/*" required style="max-width:280px"><button class="ghost sm">{{ i('upload') }} {{ 'Replace' if current.cover else 'Upload' }}</button></form>
+{% if current.cover %}<form method="post" action="/photos/{{ current.cover }}/delete"><input type="hidden" name="next" value="/items?room={{ current.id }}"><button class="danger sm">{{ i('trash') }} Remove photo</button></form>{% endif %}
+<form method="post" action="/rooms/{{ current.id }}/delete" onsubmit="return confirm('Delete room? Items are kept.')"><button class="danger sm">{{ i('trash') }} Delete room</button></form>
+</div></section>{% endif %}
+
+{% if items %}<div class="tiles" style="margin-bottom:18px">{% for it in items %}
+<a class="tile" href="/items/{{ it.id }}"><div class="ph">
+{% if it.cover %}<img src="/photos/{{ it.cover }}/thumb" alt="" loading="lazy">{% else %}<div class="placeholder">{{ i('box') }}</div>{% endif %}
+{% if it.warranty_until and it.warranty_until >= today %}<span class="corner badge glass">{{ i('shield') }} Warranty</span>{% endif %}</div>
+<div class="body"><b>{{ it.name }}</b><span class="muted" style="font-size:13px">{{ it.brand or '' }} {{ it.model or '' }}&nbsp;</span>
+<div class="meta">{% if it.room_name %}<span class="badge">{{ i('door') }} {{ it.room_name }}</span>{% else %}<span></span>{% endif %}<b>{{ money(it.price) }}</b></div></div></a>
+{% endfor %}</div>
+{% else %}<section class="card"><div class="card-b">{% call empty('box', 'No items here yet. Add your first one below.') %}{% endcall %}</div></section>{% endif %}
+
+<div class="grid" id="add">
+<section class="card accent">{{ head('Add item', 'plus') }}<div class="card-b">
+<form class="form" method="post" action="/items">{% set item = None %}{% include "_item_form.html" %}<div class="wide"><button>{{ i('plus') }} Add item</button></div></form></div></section>
+<section class="card">{{ head('Add room', 'door') }}<div class="card-b">
+<form class="form" method="post" action="/rooms"><label>Room name<input name="name" required placeholder="Kitchen"></label><button class="ghost">{{ i('plus') }} Add room</button></form>
+<p class="muted" style="margin-bottom:0">Open a room to give it a cover photo.</p></div></section></div>
 {% endblock %}

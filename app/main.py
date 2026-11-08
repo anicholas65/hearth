@@ -2,21 +2,25 @@ import asyncio
 import base64
 import os
 import secrets
+import io
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import notify
 from .db import data_dir, get_db, init_db
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
+templates.env.filters["n"] = lambda v: "" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
 
 DEFAULT_TASKS = [
     ("Replace HVAC air filter", 90),
@@ -80,8 +84,25 @@ def num(v: str | None, cast=float):
     return cast(v) if v is not None else None
 
 
+THEMES = {  # key: (label, hue, saturation)
+    "ember": ("Ember", 18, 62), "forest": ("Forest", 152, 42), "ocean": ("Ocean", 205, 68),
+    "plum": ("Plum", 275, 42), "rose": ("Rose", 345, 58), "slate": ("Slate", 215, 18),
+}
+MODES = ("auto", "light", "dark")
+
+
+def greeting() -> str:
+    h = datetime.now().hour
+    return "Good morning" if h < 12 else "Good afternoon" if h < 18 else "Good evening"
+
+
 def render(request: Request, name: str, **ctx):
     ctx["today"] = date.today().isoformat()
+    t = request.cookies.get("theme")
+    m = request.cookies.get("mode")
+    ctx["theme"] = t if t in THEMES else "ember"
+    ctx["mode"] = m if m in MODES else "auto"
+    ctx["themes"] = THEMES
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -103,7 +124,8 @@ def dashboard(request: Request):
             "SELECT t.*, i.name AS item_name FROM tasks t LEFT JOIN items i ON i.id=t.item_id "
             "WHERE next_due <= ? ORDER BY next_due", (soon,)).fetchall()
         warranties = db.execute(
-            "SELECT * FROM items WHERE warranty_until BETWEEN ? AND ? ORDER BY warranty_until",
+            "SELECT i.*, (SELECT id FROM photos p WHERE p.item_id=i.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
+            "FROM items i WHERE warranty_until BETWEEN ? AND ? ORDER BY warranty_until",
             (today.isoformat(), warn)).fetchall()
         items = db.execute("SELECT * FROM items").fetchall()
         counts = {t: db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -116,8 +138,10 @@ def dashboard(request: Request):
         [(replacement_year(i), i) for i in items
          if replacement_year(i) and replacement_year(i) <= horizon],
         key=lambda x: x[0])
+    overdue = sum(1 for t in due if t["next_due"] < today.isoformat())
     return render(request, "dashboard.html", due=due, warranties=warranties,
-                  upcoming=upcoming, counts=counts, recent=recent)
+                  upcoming=upcoming, counts=counts, recent=recent, overdue=overdue,
+                  greeting=greeting())
 
 
 # ---------- tasks ----------
@@ -222,13 +246,18 @@ def item_values(form) -> list:
 def items_page(request: Request, room: int | None = None):
     with get_db() as db:
         rooms = db.execute(
-            "SELECT r.*, COUNT(i.id) AS n, COALESCE(SUM(i.price),0) AS value FROM rooms r "
-            "LEFT JOIN items i ON i.room_id=r.id GROUP BY r.id ORDER BY r.name").fetchall()
-        q = ("SELECT i.*, r.name AS room_name FROM items i LEFT JOIN rooms r ON r.id=i.room_id")
+            "SELECT r.*, COUNT(i.id) AS n, COALESCE(SUM(i.price),0) AS value, "
+            "(SELECT id FROM photos p WHERE p.room_id=r.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
+            "FROM rooms r LEFT JOIN items i ON i.room_id=r.id GROUP BY r.id ORDER BY r.name").fetchall()
+        q = ("SELECT i.*, r.name AS room_name, "
+             "(SELECT id FROM photos p WHERE p.item_id=i.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
+             "FROM items i LEFT JOIN rooms r ON r.id=i.room_id")
         items = (db.execute(q + " WHERE i.room_id=? ORDER BY i.name", (room,)) if room
                  else db.execute(q + " ORDER BY r.name, i.name")).fetchall()
     total = sum(i["price"] or 0 for i in items)
-    return render(request, "items.html", rooms=rooms, items=items, room=room, total=total)
+    current = next((r for r in rooms if r["id"] == room), None)
+    return render(request, "items.html", rooms=rooms, items=items, room=room, total=total,
+                  current=current)
 
 
 @app.post("/rooms")
@@ -241,6 +270,7 @@ def room_create(name: str = Form(...)):
 @app.post("/rooms/{room_id}/delete")
 def room_delete(room_id: int):
     with get_db() as db:
+        purge_photos(db, "room_id", room_id)
         db.execute("DELETE FROM rooms WHERE id=?", (room_id,))
     return back("/items")
 
@@ -270,11 +300,14 @@ def item_detail(request: Request, item_id: int):
                           (item_id,)).fetchall()
         tasks = db.execute("SELECT * FROM tasks WHERE item_id=? ORDER BY next_due",
                            (item_id,)).fetchall()
+        photos = db.execute("SELECT * FROM photos WHERE item_id=? ORDER BY is_cover DESC, id",
+                            (item_id,)).fetchall()
         history = db.execute(
             "SELECT l.*, t.name AS task_name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
             "WHERE t.item_id=? ORDER BY done_on DESC", (item_id,)).fetchall()
     return render(request, "item_detail.html", item=item, rooms=rooms, docs=docs, tasks=tasks,
-                  history=history, replace_year=replacement_year(item))
+                  history=history, photos=photos,
+                  replace_year=replacement_year(item))
 
 
 @app.post("/items/{item_id}")
@@ -290,8 +323,108 @@ async def item_update(request: Request, item_id: int):
 @app.post("/items/{item_id}/delete")
 def item_delete(item_id: int):
     with get_db() as db:
+        purge_photos(db, "item_id", item_id)
         db.execute("DELETE FROM items WHERE id=?", (item_id,))
     return back("/items")
+
+
+# ---------- photos ----------
+
+def save_image(data: bytes) -> tuple[str, str]:
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(400, "Unsupported image (use JPEG, PNG, WebP or GIF)")
+    base = uuid.uuid4().hex
+    up = data_dir() / "uploads"
+    full = img.copy()
+    full.thumbnail((2000, 2000))
+    full.save(up / f"{base}.jpg", "JPEG", quality=85, optimize=True)
+    thumb = ImageOps.fit(img, (480, 360), Image.LANCZOS)
+    thumb.save(up / f"{base}_t.jpg", "JPEG", quality=80, optimize=True)
+    return f"{base}.jpg", f"{base}_t.jpg"
+
+
+def purge_photos(db, col: str, ref: int) -> None:
+    for p in db.execute(f"SELECT * FROM photos WHERE {col}=?", (ref,)).fetchall():
+        for n in (p["stored_name"], p["thumb_name"]):
+            (data_dir() / "uploads" / n).unlink(missing_ok=True)
+    db.execute(f"DELETE FROM photos WHERE {col}=?", (ref,))
+
+
+@app.post("/photos")
+async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(None),
+                       room_id: str = Form(None), next: str = Form("/items")):
+    iid, rid = num(item_id, int), num(room_id, int)
+    if not (iid or rid):
+        raise HTTPException(400, "item_id or room_id required")
+    saved = []
+    for f in files:
+        if f.filename:
+            saved.append(save_image(await f.read()))
+    with get_db() as db:
+        if rid and not iid and saved:
+            purge_photos(db, "room_id", rid)  # rooms keep a single cover photo
+        db.executemany(
+            "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, created_at) "
+            "VALUES (?,?,?,?,?)",
+            [(iid, rid, a, b, datetime.now().isoformat(timespec="seconds")) for a, b in saved])
+    return back(next if next.startswith("/") else "/items")
+
+
+def photo_path(photo_id: int, thumb: bool) -> Path:
+    with get_db() as db:
+        p = db.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+    if not p:
+        raise HTTPException(404)
+    return data_dir() / "uploads" / (p["thumb_name"] if thumb else p["stored_name"])
+
+
+@app.get("/photos/{photo_id}")
+def photo_full(photo_id: int):
+    return FileResponse(photo_path(photo_id, False), headers={"Cache-Control": "max-age=604800"})
+
+
+@app.get("/photos/{photo_id}/thumb")
+def photo_thumb(photo_id: int):
+    return FileResponse(photo_path(photo_id, True), headers={"Cache-Control": "max-age=604800"})
+
+
+@app.post("/photos/{photo_id}/delete")
+def photo_delete(photo_id: int, next: str = Form("/items")):
+    with get_db() as db:
+        p = db.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+        if p:
+            for n in (p["stored_name"], p["thumb_name"]):
+                (data_dir() / "uploads" / n).unlink(missing_ok=True)
+            db.execute("DELETE FROM photos WHERE id=?", (photo_id,))
+    return back(next if next.startswith("/") else "/items")
+
+
+@app.post("/photos/{photo_id}/cover")
+def photo_cover(photo_id: int, next: str = Form("/items")):
+    with get_db() as db:
+        p = db.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+        if p:
+            col, ref = ("item_id", p["item_id"]) if p["item_id"] else ("room_id", p["room_id"])
+            db.execute(f"UPDATE photos SET is_cover=0 WHERE {col}=?", (ref,))
+            db.execute("UPDATE photos SET is_cover=1 WHERE id=?", (photo_id,))
+    return back(next if next.startswith("/") else "/items")
+
+
+# ---------- theme ----------
+
+@app.post("/theme")
+def set_theme(request: Request, theme: str = Form(None), mode: str = Form(None)):
+    ref = urlsplit(request.headers.get("referer") or "/")
+    resp = back((ref.path or "/") + (f"?{ref.query}" if ref.query else ""))
+    year = 60 * 60 * 24 * 365
+    if theme in THEMES:
+        resp.set_cookie("theme", theme, max_age=year, samesite="lax")
+    if mode in MODES:
+        resp.set_cookie("mode", mode, max_age=year, samesite="lax")
+    return resp
 
 
 # ---------- documents ----------
