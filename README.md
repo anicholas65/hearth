@@ -25,6 +25,7 @@ The image is built to `ghcr.io/anicholas65/hearth` by GitHub Actions on push to 
 | `APPRISE_URLS` | – | comma-separated Apprise URLs |
 | `NOTIFY_LEAD_DAYS` | `3` | days ahead to remind |
 | `NOTIFY_CHECK_HOURS` | `1` | check frequency |
+| `HEARTH_USERNAME` / `HEARTH_PASSWORD` | – | set both to enable basic auth |
 | `PORT` | `8080` | |
 
 ## Dev
@@ -34,4 +35,4 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest httpx
 DATA_DIR=./data .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-No auth built in – keep it on your LAN or behind a reverse proxy with auth.
+Auth is optional basic auth. Without it, keep Hearth on your LAN or behind a reverse proxy with auth.

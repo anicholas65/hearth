@@ -77,3 +77,16 @@ def test_notify_digest(client, monkeypatch):
     assert "Late (OVERDUE" in sent[0] and "Far" not in sent[0]
     assert notify.run_check(today) == 0  # once per day
     assert notify.run_check(today + timedelta(days=1)) == 1
+
+
+def test_basic_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTIFY_DISABLED", "1")
+    monkeypatch.setenv("HEARTH_USERNAME", "alan")
+    monkeypatch.setenv("HEARTH_PASSWORD", "s3cret")
+    from app.main import app
+    with TestClient(app) as c:
+        assert c.get("/").status_code == 401
+        assert c.get("/", auth=("alan", "nope")).status_code == 401
+        assert c.get("/", auth=("alan", "s3cret")).status_code == 200
+        assert c.get("/api/health").status_code == 200

@@ -1,12 +1,14 @@
 import asyncio
+import base64
 import os
+import secrets
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -44,6 +46,24 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Hearth", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def basic_auth(request: Request, call_next):
+    user, pw = os.environ.get("HEARTH_USERNAME"), os.environ.get("HEARTH_PASSWORD")
+    if not (user and pw) or request.url.path == "/api/health":
+        return await call_next(request)
+    try:
+        scheme, _, cred = request.headers.get("authorization", "").partition(" ")
+        u, _, p = base64.b64decode(cred).decode().partition(":")
+        ok = scheme.lower() == "basic" and secrets.compare_digest(u, user) and secrets.compare_digest(p, pw)
+    except Exception:
+        ok = False
+    if ok:
+        return await call_next(request)
+    return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Hearth"'})
+
+
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
 
