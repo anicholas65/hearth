@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% from "_macros.html" import i, empty %}
+{% block title %}Photos{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Photos</h1><p>Capture anything around the house now, and file it to an item or room later.</p></div>
+<div class="actions">
+<form method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="next" value="/gallery?show=unfiled">
+<label class="btn">{{ i('camera') }} Take photo<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" hidden></label></form>
+<button type="button" class="ghost" id="webcam-btn" hidden>{{ i('camera') }} Webcam</button>
+<form method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="next" value="/gallery?show=unfiled">
+<label class="btn ghost">{{ i('upload') }} Upload<input type="file" name="files" accept="image/*" multiple onchange="this.form.submit()" hidden></label></form>
+</div></div>
+
+<div class="filters">{% for key, label, n in [('all','All',counts.all_),('unfiled','Unfiled',counts.unfiled),('items','Items',counts['items']),('rooms','Rooms',counts.rooms)] %}
+<a class="badge {{ 'acc' if show == key }}" href="/gallery?show={{ key }}">{{ label }} · {{ n or 0 }}</a>{% endfor %}</div>
+
+{% if photos %}<div class="tiles">{% for p in photos %}
+<a class="tile" href="/gallery/{{ p.id }}"><div class="ph"><img src="/photos/{{ p.id }}/thumb" alt="{{ p.caption or '' }}" loading="lazy">
+{% if not p.item_id and not p.room_id %}<span class="corner badge glass">Unfiled</span>{% endif %}</div>
+<div class="body"><span class="cap">{{ p.caption or p.created_at[:16].replace('T', ' ') }}</span>
+<div class="meta">{% if p.item_name %}<span class="badge acc">{{ i('box') }} {{ p.item_name }}</span>{% elif p.room_name %}<span class="badge acc">{{ i('door') }} {{ p.room_name }}</span>{% else %}<span class="badge">{{ i('sliders') }} Tap to file</span>{% endif %}</div></div></a>
+{% endfor %}</div>
+{% else %}<section class="card"><div class="card-b">{% call empty('camera', 'No photos here yet. Tap “Take photo” to capture one.') %}{% endcall %}</div></section>{% endif %}
+
+<dialog class="cam" id="cam"><video id="cam-video" autoplay playsinline muted></video>
+<div class="card-b actions" style="justify-content:space-between"><input id="cam-caption" placeholder="Caption (optional)" style="flex:1;min-width:160px">
+<div class="actions"><button type="button" class="ghost" id="cam-close">Cancel</button><button type="button" id="cam-snap">{{ i('camera') }} Capture</button></div></div></dialog>
+<script>
+(() => {
+  const btn = document.getElementById('webcam-btn'), dlg = document.getElementById('cam'),
+        video = document.getElementById('cam-video'), snap = document.getElementById('cam-snap');
+  if (!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return;
+  btn.hidden = false;
+  let stream = null;
+  const stop = () => { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; };
+  btn.onclick = async () => {
+    try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment', width: {ideal: 1920}}}); }
+    catch (e) { alert('Camera unavailable: ' + e.message); return; }
+    video.srcObject = stream; dlg.showModal();
+  };
+  document.getElementById('cam-close').onclick = () => dlg.close();
+  dlg.addEventListener('close', stop);
+  snap.onclick = () => {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0);
+    snap.disabled = true;
+    c.toBlob(async blob => {
+      const fd = new FormData();
+      fd.append('files', blob, 'capture.jpg');
+      fd.append('caption', document.getElementById('cam-caption').value);
+      fd.append('next', '/gallery?show=unfiled');
+      const r = await fetch('/photos', {method: 'POST', body: fd});
+      dlg.close(); location.href = r.url || '/gallery?show=unfiled';
+    }, 'image/jpeg', 0.92);
+  };
+})();
+</script>
+{% endblock %}

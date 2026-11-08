@@ -217,3 +217,57 @@ details[open]>summary{margin-bottom:12px}
 .tile .meta>span{flex:1;min-width:0}
 @media (max-width:560px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.tile .body{padding:9px 10px 10px}.tile .body b{font-size:14px}
   .ph .corner{top:6px;right:6px}.rooms{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- capture ---------- */
+.fab-form{position:fixed;right:18px;bottom:18px;z-index:6}
+.fab{flex-direction:row;align-items:center;gap:8px;padding:12px 18px;border-radius:99px;background:var(--accent);color:var(--on-accent);
+  font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px hsl(var(--h) 40% 20% / .3);border:1px solid var(--accent);transition:transform .12s}
+.fab:hover{transform:translateY(-2px)}
+@media (min-width:861px){.fab span{display:inline}}
+label.btn{flex-direction:row;color:var(--on-accent);font-size:15px}label.btn.ghost{color:var(--accent)}
+dialog.cam{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--fg);padding:0;width:min(720px,94vw);box-shadow:var(--shadow)}
+dialog.cam::backdrop{background:#000a;backdrop-filter:blur(3px)}
+dialog.cam video{width:100%;display:block;background:#000;max-height:70vh}
+.photo-view{display:block;width:100%;max-height:72vh;object-fit:contain;background:#0b0b0b;border-bottom:1px solid var(--line)}
+.tabs{display:inline-flex;gap:4px;padding:4px;background:var(--tint);border:1px solid var(--line);border-radius:12px}
+.tabs a{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;color:var(--muted);text-decoration:none;font-weight:600}
+.tabs a.on{background:var(--card);color:var(--accent);box-shadow:var(--shadow);border:1px solid var(--line)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.filters a{padding:5px 12px;font-size:13px}
+.tile .cap{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- budget balance ---------- */
+:root{--s1:#2a78d6;--s2:#eb6834}
+@media (prefers-color-scheme:dark){:root[data-mode=auto]{--s1:#3987e5;--s2:#d95926}}
+:root[data-mode=dark]{--s1:#3987e5;--s2:#d95926}
+.stat.hl{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:linear-gradient(135deg,var(--accent-soft),var(--card) 70%)}
+.stat b.neg{color:var(--bad)}
+.meter{margin:4px 0 14px}.meter:last-child{margin-bottom:0}
+.meter .lbl{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;gap:8px}
+.meter .lbl b{font-variant-numeric:tabular-nums}
+.meter .track{height:14px;border-radius:99px;background:var(--tint);border:1px solid var(--line);overflow:hidden;position:relative}
+.meter .fill{height:100%;border-radius:99px}
+.meter .fill.over{background:repeating-linear-gradient(45deg,var(--bad) 0 6px,color-mix(in srgb,var(--bad) 70%,#fff) 6px 12px)!important}
+.legend{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chart{position:relative}
+.chart svg{width:100%;height:auto;display:block;overflow:visible}
+.chart .grid line{stroke:var(--line);stroke-width:1}
+.chart .grid text,.chart .xl text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.chart .m rect.hit{fill:transparent}
+.chart .m:hover rect.hit{fill:color-mix(in srgb,var(--accent-soft) 60%,transparent)}
+.chart .m.dim path{opacity:.35}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line-strong);border-radius:10px;padding:8px 11px;font-size:13px;
+  box-shadow:var(--shadow);min-width:150px;transform:translate(-50%,-100%);display:none;z-index:2}
+.tip b{display:block;margin-bottom:3px}.tip div{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
+.tip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.amt-in{color:var(--ok);font-weight:600}.amt-out{color:var(--fg);font-weight:600}
+.year-pick{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+nav a{padding:7px 9px;gap:6px;font-size:14.5px}
+.bar{gap:12px}
+@media (max-width:1180px){nav a span{display:none}nav a{padding:8px 10px}}
+main{padding-bottom:96px}
+@media (max-width:520px){nav{gap:1px}nav a{padding:7px 6px}.modebtn{padding:6px}}
+.tile .meta>.badge{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:860px){.fab span{display:none}.fab{padding:14px}}
+@media (max-width:560px){.stat.hl{grid-column:1/-1}}

@@ -355,10 +355,9 @@ def purge_photos(db, col: str, ref: int) -> None:
 
 @app.post("/photos")
 async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(None),
-                       room_id: str = Form(None), next: str = Form("/items")):
+                       room_id: str = Form(None), caption: str = Form(None),
+                       next: str = Form("/gallery")):
     iid, rid = num(item_id, int), num(room_id, int)
-    if not (iid or rid):
-        raise HTTPException(400, "item_id or room_id required")
     saved = []
     for f in files:
         if f.filename:
@@ -367,10 +366,11 @@ async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(
         if rid and not iid and saved:
             purge_photos(db, "room_id", rid)  # rooms keep a single cover photo
         db.executemany(
-            "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, created_at) "
-            "VALUES (?,?,?,?,?)",
-            [(iid, rid, a, b, datetime.now().isoformat(timespec="seconds")) for a, b in saved])
-    return back(next if next.startswith("/") else "/items")
+            "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, caption, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            [(iid, rid, a, b, blank(caption), datetime.now().isoformat(timespec="seconds"))
+             for a, b in saved])
+    return back(next if next.startswith("/") else "/gallery")
 
 
 def photo_path(photo_id: int, thumb: bool) -> Path:
@@ -411,6 +411,56 @@ def photo_cover(photo_id: int, next: str = Form("/items")):
             db.execute(f"UPDATE photos SET is_cover=0 WHERE {col}=?", (ref,))
             db.execute("UPDATE photos SET is_cover=1 WHERE id=?", (photo_id,))
     return back(next if next.startswith("/") else "/items")
+
+
+@app.get("/gallery")
+def gallery_page(request: Request, show: str = "all"):
+    where = {"unfiled": "WHERE p.item_id IS NULL AND p.room_id IS NULL",
+             "items": "WHERE p.item_id IS NOT NULL", "rooms": "WHERE p.room_id IS NOT NULL"}.get(show, "")
+    with get_db() as db:
+        photos = db.execute(
+            "SELECT p.*, i.name AS item_name, r.name AS room_name FROM photos p "
+            "LEFT JOIN items i ON i.id=p.item_id LEFT JOIN rooms r ON r.id=p.room_id "
+            f"{where} ORDER BY p.created_at DESC, p.id DESC").fetchall()
+        counts = db.execute(
+            "SELECT COUNT(*) AS all_, SUM(item_id IS NULL AND room_id IS NULL) AS unfiled, "
+            "SUM(item_id IS NOT NULL) AS items, SUM(room_id IS NOT NULL) AS rooms FROM photos").fetchone()
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+        rooms = db.execute("SELECT id, name FROM rooms ORDER BY name").fetchall()
+    return render(request, "gallery.html", photos=photos, show=show, counts=counts,
+                  items=items, rooms=rooms)
+
+
+@app.get("/gallery/{photo_id}")
+def gallery_photo(request: Request, photo_id: int):
+    with get_db() as db:
+        p = db.execute(
+            "SELECT p.*, i.name AS item_name, r.name AS room_name FROM photos p "
+            "LEFT JOIN items i ON i.id=p.item_id LEFT JOIN rooms r ON r.id=p.room_id WHERE p.id=?",
+            (photo_id,)).fetchone()
+        if not p:
+            raise HTTPException(404)
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+        rooms = db.execute("SELECT id, name FROM rooms ORDER BY name").fetchall()
+        ids = [r[0] for r in db.execute("SELECT id FROM photos ORDER BY created_at DESC, id DESC")]
+    pos = ids.index(photo_id)
+    prev_id = ids[pos - 1] if pos > 0 else None
+    next_id = ids[pos + 1] if pos + 1 < len(ids) else None
+    return render(request, "photo.html", photo=p, items=items, rooms=rooms,
+                  prev_id=prev_id, next_id=next_id)
+
+
+@app.post("/gallery/{photo_id}")
+def gallery_update(photo_id: int, caption: str = Form(None), item_id: str = Form(None),
+                   room_id: str = Form(None)):
+    with get_db() as db:
+        rid = num(room_id, int)
+        db.execute("UPDATE photos SET caption=?, item_id=?, room_id=?, is_cover=0 WHERE id=?",
+                   (blank(caption), num(item_id, int), rid, photo_id))
+        if rid:  # filing to a room makes it that room's cover
+            db.execute("UPDATE photos SET is_cover=0 WHERE room_id=?", (rid,))
+            db.execute("UPDATE photos SET is_cover=1 WHERE id=?", (photo_id,))
+    return back(f"/gallery/{photo_id}")
 
 
 # ---------- theme ----------
@@ -508,16 +558,12 @@ def contractor_delete(cid: int):
 
 # ---------- budget ----------
 
-@app.get("/budget")
-def budget_page(request: Request):
+def forecast_data():
     this_year = date.today().year
     with get_db() as db:
         items = db.execute(
             "SELECT i.*, r.name AS room_name FROM items i LEFT JOIN rooms r ON r.id=i.room_id"
         ).fetchall()
-        spend = db.execute(
-            "SELECT substr(done_on,1,4) AS yr, SUM(cost) AS total FROM task_logs "
-            "WHERE cost IS NOT NULL GROUP BY yr ORDER BY yr DESC").fetchall()
     years: dict[int, list] = {}
     untracked = []
     for i in items:
@@ -529,8 +575,100 @@ def budget_page(request: Request):
     forecast = [(y, rows, sum((i["replace_cost"] or 0) for _, i in rows))
                 for y, rows in sorted(years.items())]
     ten_year = sum(t for y, _, t in forecast if y < this_year + 10)
-    return render(request, "budget.html", forecast=forecast, untracked=untracked,
-                  spend=spend, ten_year=ten_year, monthly=ten_year / 120, this_year=this_year)
+    return dict(forecast=forecast, untracked=untracked, ten_year=ten_year,
+                monthly=ten_year / 120, this_year=this_year)
+
+
+def nice_ceiling(v: float) -> float:
+    if v <= 0:
+        return 100.0
+    mag = 10 ** (len(str(int(v))) - 1)
+    for step in (1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
+        if step * mag >= v:
+            return step * mag
+    return 10 * mag
+
+
+LEDGER_SQL = """
+SELECT 'f' || id AS key, id, entry_date AS d, kind, amount, note, item_id, NULL AS task_id
+  FROM fund_entries
+UNION ALL
+SELECT 't' || l.id, l.id, l.done_on, 'expense', l.cost, 'Maintenance: ' || t.name, t.item_id, t.id
+  FROM task_logs l JOIN tasks t ON t.id = l.task_id WHERE l.cost IS NOT NULL AND l.cost > 0
+"""
+
+
+def balance_data(year: int):
+    y = str(year)
+    with get_db() as db:
+        rows = db.execute(f"SELECT * FROM ({LEDGER_SQL}) ORDER BY d, key").fetchall()
+        budget = db.execute("SELECT amount FROM budgets WHERE year=?", (year,)).fetchone()
+        years = {r[0] for r in db.execute("SELECT year FROM budgets")}
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+    sign = lambda r: r["amount"] if r["kind"] == "allocation" else -r["amount"]
+    carry = sum(sign(r) for r in rows if r["d"][:4] < y)
+    ledger, run = [], carry
+    months = [{"m": m, "alloc": 0.0, "spent": 0.0} for m in range(1, 13)]
+    for r in rows:
+        years.add(int(r["d"][:4]))
+        if r["d"][:4] != y:
+            continue
+        run += sign(r)
+        ledger.append({**dict(r), "balance": run})
+        months[int(r["d"][5:7]) - 1]["alloc" if r["kind"] == "allocation" else "spent"] += r["amount"]
+    allocated = sum(m["alloc"] for m in months)
+    spent = sum(m["spent"] for m in months)
+    fund_total = sum(sign(r) for r in rows)
+    budget_amt = budget["amount"] if budget else None
+    peak = max([m["alloc"] for m in months] + [m["spent"] for m in months] + [0])
+    axis_max = nice_ceiling(peak)
+    years.add(date.today().year)
+    return dict(
+        year=year, years=sorted(years, reverse=True), budget=budget_amt,
+        allocated=allocated, spent=spent, carry=carry, year_end=run, fund_total=fund_total,
+        remaining=(budget_amt - spent) if budget_amt is not None else None,
+        unallocated=(budget_amt - allocated) if budget_amt is not None else None,
+        months=months, axis_max=axis_max, ticks=[axis_max * k / 4 for k in range(5)],
+        ledger=list(reversed(ledger)), items=items)
+
+
+@app.get("/budget")
+def budget_page(request: Request, view: str = "balance", year: int | None = None):
+    if view == "forecast":
+        return render(request, "budget.html", view=view, **forecast_data())
+    return render(request, "budget.html", view="balance",
+                  **balance_data(year or date.today().year))
+
+
+@app.post("/budget/year")
+def budget_set(year: int = Form(...), amount: str = Form(None)):
+    with get_db() as db:
+        if num(amount) is None:
+            db.execute("DELETE FROM budgets WHERE year=?", (year,))
+        else:
+            db.execute("INSERT INTO budgets (year, amount) VALUES (?,?) "
+                       "ON CONFLICT(year) DO UPDATE SET amount=excluded.amount", (year, num(amount)))
+    return back(f"/budget?year={year}")
+
+
+@app.post("/budget/entries")
+def budget_entry(kind: str = Form(...), amount: float = Form(...), entry_date: str = Form(None),
+                 note: str = Form(None), item_id: str = Form(None)):
+    if kind not in ("allocation", "expense") or amount <= 0:
+        raise HTTPException(400, "kind must be allocation/expense and amount > 0")
+    d = blank(entry_date) or date.today().isoformat()
+    with get_db() as db:
+        db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id) "
+                   "VALUES (?,?,?,?,?)", (d, kind, amount, blank(note), num(item_id, int)))
+    return back(f"/budget?year={d[:4]}")
+
+
+@app.post("/budget/entries/{entry_id}/delete")
+def budget_entry_delete(entry_id: int):
+    with get_db() as db:
+        r = db.execute("SELECT entry_date FROM fund_entries WHERE id=?", (entry_id,)).fetchone()
+        db.execute("DELETE FROM fund_entries WHERE id=?", (entry_id,))
+    return back(f"/budget?year={r[0][:4]}" if r else "/budget")
 
 
 # ---------- settings ----------

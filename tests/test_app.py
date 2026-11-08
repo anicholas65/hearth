@@ -14,7 +14,8 @@ def client(tmp_path, monkeypatch):
 
 
 def test_pages_render(client):
-    for p in ["/", "/tasks", "/items", "/documents", "/contractors", "/budget", "/settings"]:
+    for p in ["/", "/tasks", "/items", "/documents", "/contractors", "/budget", "/budget?view=forecast",
+              "/budget?year=2020", "/gallery", "/gallery?show=unfiled", "/settings"]:
         assert client.get(p).status_code == 200, p
 
 
@@ -44,7 +45,7 @@ def test_items_rooms_budget(client):
                     follow_redirects=False)
     assert r.headers["location"] == "/items/1"
     assert "2028" in client.get("/items/1").text
-    b = client.get("/budget").text
+    b = client.get("/budget?view=forecast").text
     assert "Fridge" in b and "$1,800" in b
     assert "Fridge" in client.get("/items?room=1").text
 
@@ -132,3 +133,55 @@ def test_theme_cookie(client):
     assert 'data-theme="ocean"' in html and 'data-mode="dark"' in html
     client.cookies.set("theme", "bogus")
     assert 'data-theme="ember"' in client.get("/").text
+
+
+def test_unfiled_capture_and_filing(client):
+    client.post("/rooms", data={"name": "Garage"})
+    client.post("/items", data={"name": "Furnace"})
+    r = client.post("/photos", data={"caption": "Leak by door"},
+                    files=[("files", ("cap.jpg", _jpeg(), "image/jpeg"))], follow_redirects=False)
+    assert r.headers["location"] == "/gallery"
+    g = client.get("/gallery?show=unfiled").text
+    assert "Leak by door" in g and "Unfiled" in g
+    assert "Leak by door" in client.get("/gallery/1").text
+    client.post("/gallery/1", data={"caption": "Leak by door", "item_id": "1", "room_id": "1"})
+    assert "Leak by door" not in client.get("/gallery?show=unfiled").text
+    assert 'src="/photos/1/thumb"' in client.get("/items/1").text
+    assert "/photos/1/thumb" in client.get("/items").text  # room cover
+
+
+def test_budget_balance(client):
+    from app.main import balance_data
+    client.post("/budget/year", data={"year": "2025", "amount": "1000"})
+    client.post("/budget/entries", data={"kind": "allocation", "amount": "500", "entry_date": "2025-03-01"})
+    client.post("/budget/entries", data={"kind": "expense", "amount": "200", "entry_date": "2025-06-10", "note": "Gutter guards"})
+    client.post("/budget/year", data={"year": "2026", "amount": "2000"})
+    client.post("/budget/entries", data={"kind": "allocation", "amount": "1000", "entry_date": "2026-01-05"})
+    client.post("/tasks", data={"name": "HVAC service", "interval_days": 365})
+    client.post("/tasks/1/done", data={"done_on": "2026-04-02", "cost": "150"})
+    b = balance_data(2026)
+    assert (b["budget"], b["allocated"], b["spent"], b["carry"]) == (2000, 1000, 150, 300)
+    assert b["remaining"] == 1850 and b["unallocated"] == 1000 and b["fund_total"] == 1150
+    assert b["months"][0]["alloc"] == 1000 and b["months"][3]["spent"] == 150
+    assert [e["balance"] for e in b["ledger"]] == [1150, 1300]  # newest first
+    html = client.get("/budget?year=2026").text
+    assert "$1,150" in html and "Maintenance: HVAC service" in html and "$1,850" in html
+    assert client.post("/budget/entries", data={"kind": "allocation", "amount": "-5"}).status_code == 400
+    client.post("/budget/entries/2/delete")
+    assert balance_data(2026)["carry"] == 500
+    client.post("/budget/year", data={"year": "2026", "amount": ""})
+    assert balance_data(2026)["budget"] is None
+
+
+def test_caption_migration(tmp_path, monkeypatch):
+    import sqlite3
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    con = sqlite3.connect(tmp_path / "hearth.db")
+    con.execute("CREATE TABLE photos (id INTEGER PRIMARY KEY, item_id INTEGER, room_id INTEGER, "
+                "stored_name TEXT NOT NULL UNIQUE, thumb_name TEXT NOT NULL, "
+                "is_cover INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
+    con.commit(); con.close()
+    from app.db import init_db, get_db
+    init_db()
+    with get_db() as db:
+        assert "caption" in {r["name"] for r in db.execute("PRAGMA table_info(photos)")}

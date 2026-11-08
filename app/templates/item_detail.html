@@ -20,8 +20,10 @@
 <form method="post" action="/photos/{{ p.id }}/delete" onsubmit="return confirm('Delete photo?')"><input type="hidden" name="next" value="/items/{{ item.id }}"><button class="icon sm" title="Delete">{{ i('trash') }}</button></form></div></figure>
 {% endfor %}</div>{% endif %}
 <form class="actions" method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
-<input type="file" name="files" accept="image/*" multiple required style="max-width:320px"><button class="ghost">{{ i('upload') }} Upload photos</button></form>
-<p class="muted" style="margin:8px 0 0;font-size:13px">Photograph the item, its label/serial plate and receipt. Useful for insurance claims.</p></div></section>
+<label class="btn">{{ i('camera') }} Take photo<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" hidden></label></form>
+<form class="actions" method="post" action="/photos" enctype="multipart/form-data" style="margin-top:8px"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
+<label class="btn ghost">{{ i('upload') }} Upload photos<input type="file" name="files" accept="image/*" multiple onchange="this.form.submit()" hidden></label></form>
+<p class="muted" style="margin:10px 0 0;font-size:13px">Photograph the item, its label/serial plate and receipt. Useful for insurance claims.</p></div></section>
 
 <div class="grid">
 <section class="card">{{ head('Documents & manuals', 'file') }}<div class="card-b">

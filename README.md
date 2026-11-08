@@ -1,13 +1,15 @@
 # Hearth
 
-Self-hosted home manager for Unraid: maintenance reminders, home inventory, documents & manuals, contractors, and replacement budgeting. FastAPI + SQLite, single container.
+Self-hosted home manager for Unraid: maintenance reminders, home inventory, photos, documents & manuals, contractors, and budgeting. FastAPI + SQLite, single container.
 
 ## Features
 - **Maintenance** – recurring tasks with due dates, one-click "done", cost/contractor logging, full history. Seed with 12 common home tasks.
 - **Inventory** – rooms → items with brand/model/serial, purchase price, warranty, expected lifespan.
 - **Documents** – upload receipts/manuals/policies, optionally linked to an item.
+- **Photos** – capture from a phone camera (or webcam over HTTPS) anywhere in the app, caption it, and file it to an item or room later. Item galleries and room cover photos.
 - **Contractors** – contact list with job count and total spend.
-- **Budget** – replacement forecast by year from purchase date + lifespan, monthly set-aside, maintenance spend by year.
+- **Budget → Balance** – yearly budget, money allocated to the home fund, money spent (manual expenses + maintenance costs), budget remaining and fund balance, monthly allocated-vs-spent chart, ledger with running balance.
+- **Budget → Forecast** – replacement forecast by year from purchase date + lifespan, suggested monthly allocation.
 - **Notifications** – daily digest of due/overdue tasks via [Apprise](https://github.com/caronc/apprise/wiki) (ntfy, Discord, email, Pushover, Gotify…).
 
 ## Unraid

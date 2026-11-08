@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% from "_macros.html" import i, head %}
+{% block title %}Photo{% endblock %}{% block content %}
+<div class="page-head" style="align-items:center"><a class="crumb" href="/gallery" style="margin:0">{{ i('back') }} Photos</a>
+<div class="actions">{% if prev_id %}<a class="btn ghost sm" href="/gallery/{{ prev_id }}">‹ Newer</a>{% endif %}{% if next_id %}<a class="btn ghost sm" href="/gallery/{{ next_id }}">Older ›</a>{% endif %}</div></div>
+<section class="card"><a href="/photos/{{ photo.id }}" target="_blank"><img class="photo-view" src="/photos/{{ photo.id }}" alt="{{ photo.caption or '' }}"></a>
+<div class="card-b"><div class="actions" style="justify-content:space-between">
+<div><b>{{ photo.caption or 'Untitled photo' }}</b><br><span class="muted" style="font-size:13px">{{ i('clock') }} {{ photo.created_at.replace('T', ' ') }}</span></div>
+<div class="actions">{% if photo.item_id %}<a class="badge acc" href="/items/{{ photo.item_id }}">{{ i('box') }} {{ photo.item_name }}</a>{% endif %}
+{% if photo.room_id %}<a class="badge acc" href="/items?room={{ photo.room_id }}">{{ i('door') }} {{ photo.room_name }}</a>{% endif %}
+<a class="btn ghost sm" href="/photos/{{ photo.id }}" download="hearth-photo-{{ photo.id }}.jpg">{{ i('download') }} Download</a></div></div></div></section>
+<section class="card accent">{{ head('Caption & filing', 'sliders') }}<div class="card-b">
+<form class="form" method="post" action="/gallery/{{ photo.id }}">
+<label class="wide">Caption<input name="caption" value="{{ photo.caption or '' }}" placeholder="Water stain under kitchen sink"></label>
+<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == photo.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>
+<label>Room<select name="room_id"><option value="">—</option>{% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if r.id == photo.room_id }}>{{ r.name }}</option>{% endfor %}</select></label>
+<button>Save</button></form>
+<p class="muted" style="font-size:13px;margin:10px 0 0">Filing to a room makes this the room's cover photo.</p>
+<form method="post" action="/photos/{{ photo.id }}/delete" onsubmit="return confirm('Delete photo?')" style="margin-top:12px"><input type="hidden" name="next" value="/gallery"><button class="danger sm">{{ i('trash') }} Delete photo</button></form></div></section>
+{% endblock %}

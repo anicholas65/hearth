@@ -54,9 +54,27 @@ CREATE TABLE IF NOT EXISTS photos (
     stored_name TEXT NOT NULL UNIQUE,
     thumb_name TEXT NOT NULL,
     is_cover INTEGER NOT NULL DEFAULT 0,
+    caption TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS budgets (
+    year INTEGER PRIMARY KEY,
+    amount REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fund_entries (
+    id INTEGER PRIMARY KEY,
+    entry_date TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('allocation', 'expense')),
+    amount REAL NOT NULL CHECK (amount > 0),
+    note TEXT,
+    item_id INTEGER REFERENCES items(id) ON DELETE SET NULL
+);
 """
+
+# columns added after first release: (table, column, ddl)
+MIGRATIONS = [
+    ("photos", "caption", "ALTER TABLE photos ADD COLUMN caption TEXT"),
+]
 
 
 def data_dir() -> Path:
@@ -85,3 +103,7 @@ def get_db():
 def init_db() -> None:
     with get_db() as db:
         db.executescript(SCHEMA)
+        for table, col, ddl in MIGRATIONS:
+            cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
+            if col not in cols:
+                db.execute(ddl)
