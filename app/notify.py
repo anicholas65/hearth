@@ -36,7 +36,7 @@ def due_digest(today: date | None = None) -> tuple[list[int], list[int], str, li
     tomorrow = (today + timedelta(days=1)).isoformat()
     with get_db() as db:
         rows = db.execute(
-            "SELECT id, name, next_due FROM tasks WHERE next_due <= ? "
+            "SELECT id, name, next_due FROM tasks WHERE next_due <= ? AND completed_at IS NULL "
             "AND (last_notified IS NULL OR last_notified < ?) ORDER BY next_due",
             (horizon, today.isoformat()),
         ).fetchall()

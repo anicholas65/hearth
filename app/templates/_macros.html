@@ -5,3 +5,12 @@
 {% macro money(v) -%}{% if v %}${{ "{:,.0f}".format(v) }}{% else %}<span class="muted">—</span>{% endif %}{%- endmacro %}
 {% macro head(title, icon, actions='') -%}<div class="card-h"><h2>{{ i(icon) }} {{ title }}</h2>{{ actions|safe }}</div>{%- endmacro %}
 {% macro empty(icon, text) -%}<div class="empty">{{ i(icon) }}<div>{{ text }}</div>{{ caller() if caller }}</div>{%- endmacro %}
+{% macro tip(text) -%}<span class="tip-i" tabindex="0" role="img" aria-label="{{ text }}" data-tip="{{ text }}">{{ i('info') }}</span>{%- endmacro %}
+{% macro blank_state(art, title, text) -%}<div class="empty">{% include "illus/" ~ art ~ ".svg" %}<h3>{{ title }}</h3><p>{{ text }}</p>{% if caller %}<div class="actions">{{ caller() }}</div>{% endif %}</div>{%- endmacro %}
+{% macro repeat_picker(presets, current=90, preset_days=none) -%}
+{% set is_custom = preset_days is not none and current not in preset_days %}
+<label>Repeats<select name="repeat" onchange="this.closest('form').querySelector('.rc').hidden = this.value !== 'custom'">
+{% for d, lbl in presets %}<option value="{{ d }}" {{ 'selected' if d == current and not is_custom }}>{{ lbl }}</option>{% endfor %}
+<option value="custom" {{ 'selected' if is_custom }}>Custom…</option></select></label>
+<label class="rc" {{ '' if is_custom else 'hidden' }}>Every how many days?<input name="repeat_custom" type="number" min="1" value="{{ current }}" inputmode="numeric"></label>
+{%- endmacro %}

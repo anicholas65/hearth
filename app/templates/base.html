@@ -1,76 +1,109 @@
 {% from "_macros.html" import i %}<!doctype html>
-<html lang="en" data-theme="{{ theme }}" data-mode="{{ mode }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<html lang="en" data-theme="{{ theme }}" data-mode="{{ mode }}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{% block title %}Hearth{% endblock %} · Hearth</title>
-<meta name="theme-color" content="#365D4B">
-<link rel="stylesheet" href="/static/style.css?v={{ about.version }}"><link rel="icon" href="/static/icon.png"><link rel="apple-touch-icon" href="/static/icon.png">
+<meta name="theme-color" content="#F5F1E8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161B19" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/static/style.css?v={{ about.version }}">
+<link rel="icon" href="{{ brand.favicon }}"{% if brand.v2 %} type="image/svg+xml"{% endif %}>
+<link rel="apple-touch-icon" href="{{ '/static/brand/apple-touch-icon.png' if brand.v2 else '/static/icon.png' }}">
+{% if brand.v2 %}<link rel="manifest" href="/static/manifest.webmanifest">{% endif %}
 </head><body>
+<a class="sr-only" href="#main" style="position:absolute">Skip to content</a>
 {% include "_sprite.html" %}
 <header>
 <div class="bar">
-<a class="brand" href="/"><img src="/static/icon.png" alt=""><span>Hearth</span></a>
+<a class="brand" href="/" aria-label="Hearth home"><img src="{{ brand.icon }}" alt="" width="32" height="32"><span>Hearth</span></a>
 <nav class="primary" aria-label="Main">{% for key, (label, icon, pages) in sections.items() %}
-<a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}">{{ label }}{% if key == 'plan' and nav_counts.overdue %}<span class="cnt bad" title="Overdue tasks">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}</nav>
-<form class="hsearch" action="/search" role="search">{{ i('search') }}<input name="q" id="hsearch" placeholder="Search everything" value="{{ q if q is defined else '' }}" autocomplete="off"><kbd>/</kbd></form>
-<button type="button" class="newbtn" data-open="quick">{{ i('plus') }} New</button>
-<a class="iconbtn hide-lg" href="/search" title="Search" aria-label="Search" style="margin-left:auto">{{ i('search') }}</a>
-<a class="iconbtn {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings" title="Settings" aria-label="Settings">{{ i('sliders') }}</a>
+<a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}"{% if section == key %} aria-current="page"{% endif %}>{{ label }}{% if key == 'plan' and nav_counts.overdue %} <span class="cnt bad" aria-label="{{ nav_counts.overdue }} overdue">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}</nav>
+<form class="hsearch" action="/search" role="search">{{ i('search') }}<label class="sr-only" for="hsearch">Search Hearth</label><input name="q" id="hsearch" placeholder="Search everything" value="{{ q if q is defined else '' }}" autocomplete="off"><kbd aria-hidden="true">/</kbd></form>
+<button type="button" class="newbtn" data-dialog="quick">{{ i('plus') }} New</button>
+<a class="iconbtn hide-lg" href="/search" aria-label="Search" style="margin-left:auto">{{ i('search') }}</a>
+<a class="iconbtn {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings" aria-label="Settings" title="Settings">{{ i('settings') }}</a>
 </div>
-{% if section and sections[section][2] %}<div class="subnav"><div class="bar" style="min-height:0">{% for path, label, icon in sections[section][2] %}
-<a href="{{ path }}" class="{{ 'on' if sub_active == path }}">{{ i(icon) }} {{ label }}{% if path == '/shopping' and nav_counts.shopping %}<span class="cnt">{{ nav_counts.shopping }}</span>{% endif %}{% if path == '/tasks' and nav_counts.overdue %}<span class="cnt bad">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}
-</div></div>{% endif %}
+{% if section and sections[section][2] %}<nav class="subnav" aria-label="{{ sections[section][0] }}"><div class="bar">{% for path, label, icon in sections[section][2] %}
+<a href="{{ path }}" class="{{ 'on' if sub_active == path }}"{% if sub_active == path %} aria-current="page"{% endif %}>{{ i(icon) }} {{ label }}{% if path == '/shopping' and nav_counts.shopping %} <span class="cnt">{{ nav_counts.shopping }}</span>{% endif %}{% if path == '/tasks' and nav_counts.overdue %} <span class="cnt bad">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}
+</div></nav>{% endif %}
 </header>
-<main>{% block content %}{% endblock %}</main>
+<main id="main">{% block content %}{% endblock %}</main>
 <footer class="foot">Hearth v{{ about.version }} · Developed by <a href="/settings#about">{{ about.developer }}</a></footer>
 
 <nav class="tabbar" aria-label="Main">
-{% for key in ['home', 'plan'] %}{% set label, icon, pages = sections[key] %}<a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}">{{ i(icon) }}{{ label }}{% if key == 'plan' and nav_counts.overdue %}<span class="cnt">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}
-<button type="button" class="plus" data-open="quick" aria-label="New">{{ i('plus') }}</button>
+{% for key in ['home', 'plan'] %}{% set label, icon, pages = sections[key] %}<a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}">{{ i(icon) }}{{ label }}{% if key == 'plan' and nav_counts.overdue %}<span class="cnt bad">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}
+<button type="button" class="plus" data-dialog="quick" aria-label="New">{{ i('plus') }}</button>
 {% for key in ['organize', 'finances'] %}{% set label, icon, pages = sections[key] %}<a href="{{ pages[0][0] }}" class="{{ 'on' if section == key }}">{{ i(icon) }}{{ label }}</a>{% endfor %}
 </nav>
 
-<dialog class="sheet" id="quick" aria-label="Create new">
-<div class="sheet-h"><h2>Add to Hearth</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<dialog class="sheet" id="quick" aria-labelledby="quick-h">
+<div class="dlg-h"><h2 id="quick-h">Add to Hearth</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
 <div class="qgrid">
-<form method="post" action="/photos" enctype="multipart/form-data" class="primary" style="display:contents"><input type="hidden" name="next" value="photo">
-<label class="primary">{{ i('camera') }}<span>Capture a photo<small>Item, receipt, damage — sort it after</small></span><input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" hidden></label></form>
-<a href="/tasks#new">{{ i('wrench') }}Task</a>
+<form method="post" action="/photos" enctype="multipart/form-data" style="display:contents"><input type="hidden" name="next" value="photo">
+<label class="primary">{{ i('camera') }}<span>Capture a photo<small>Item, receipt, damage — sort it after</small></span><input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" class="sr-only"></label></form>
+<a href="/tasks#new-task">{{ i('wrench') }}Task</a>
 <a href="/schedule#new">{{ i('calendar') }}Appointment</a>
 <a href="/schedule?kind=reminder#new">{{ i('bell') }}Reminder</a>
-<a href="/items#add">{{ i('box') }}Item</a>
+<a href="/items#new-item">{{ i('box') }}Item</a>
 <a href="/shopping#new">{{ i('cart') }}Shopping</a>
 <a href="/documents#new">{{ i('receipt') }}Document</a>
 <a href="/contractors#new">{{ i('users') }}Contractor</a>
-<a href="/budget#ledger">{{ i('wallet') }}Expense</a>
-<a href="/gallery">{{ i('image') }}Photos</a>
+<a href="/budget#new-expense">{{ i('wallet') }}Expense</a>
+<a href="/budget#new-funds">{{ i('banknote') }}Add funds</a>
 </div></dialog>
+
+{% if msg %}<div class="toast" role="status" id="toast"><span>{{ msg }}</span>
+{% if request.query_params.get('act') and request.query_params.get('act_href', '').startswith('/') %}<a href="{{ request.query_params.get('act_href') }}">{{ request.query_params.get('act') }}</a>{% endif %}
+<button type="button" class="icon" aria-label="Dismiss" onclick="this.parentElement.remove()">{{ i('x') }}</button></div>{% endif %}
+
 <script>
 (() => {
-  const dlg = document.getElementById('quick');
-  document.querySelectorAll('[data-open=quick]').forEach(b => b.addEventListener('click', () => dlg.showModal()));
-  dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
-  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  // Dialogs: [data-dialog=id] opens, [data-close] closes, backdrop click closes; focus returns natively.
+  const openDlg = d => {
+    d.showModal();
+    const f = d.querySelector('input:not([type=hidden]):not([type=file]):not(.sr-only),select,textarea');
+    if (f && d.id !== 'quick') f.focus();
+  };
+  window.hearthOpen = openDlg;
+  document.addEventListener('click', e => {
+    const opener = e.target.closest('[data-dialog]');
+    if (opener) { const d = document.getElementById(opener.dataset.dialog); if (d) { e.preventDefault(); openDlg(d); } return; }
+    if (e.target.closest('[data-close]')) { e.target.closest('dialog')?.close(); return; }
+    if (e.target.tagName === 'DIALOG') e.target.close();
+  });
   const s = document.getElementById('hsearch');
   document.addEventListener('keydown', e => {
-    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-    if (e.key === '/' && !typing && s && getComputedStyle(s.form).display !== 'none') { e.preventDefault(); s.focus(); }
-    if (e.key === 'n' && !typing && !e.metaKey && !e.ctrlKey) { dlg.showModal(); }
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector('dialog[open]');
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === '/' && s && s.offsetParent) { e.preventDefault(); s.focus(); }
+    if (e.key === 'n') { e.preventDefault(); document.getElementById('quick').showModal(); }
   });
-  // Arriving at #new / #add etc: open details and focus the first field
+  // #hash targets: open a dialog, or reveal + focus a section's first field
   const focusHash = () => {
-    const el = location.hash && document.getElementById(location.hash.slice(1));
+    const el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
     if (!el) return;
+    document.getElementById('quick').close();
+    if (el.tagName === 'DIALOG') { openDlg(el); return; }
     el.querySelectorAll('details').forEach(d => d.open = true);
     if (el.tagName === 'DETAILS') el.open = true;
-    const f = el.querySelector('input:not([type=hidden]):not([type=file]),textarea,select');
     el.scrollIntoView({block: 'start'});
+    const f = el.querySelector('input:not([type=hidden]):not([type=file]),textarea,select');
     if (f) setTimeout(() => f.focus({preventScroll: true}), 50);
   };
-  window.addEventListener('hashchange', () => { dlg.close(); focusHash(); });
-  focusHash();
-  // spelling help on titles; keep exactly what was typed
+  window.addEventListener('hashchange', focusHash); focusHash();
+  // icon-only controls get an accessible name from their title
+  document.querySelectorAll('button[title]:not([aria-label]),a[title]:not([aria-label])').forEach(el => {
+    if (!el.textContent.trim()) el.setAttribute('aria-label', el.title);
+  });
+  // spelling help on titles; stored text stays exactly as typed
   document.querySelectorAll('input[name=name],input[name=title],input[name=caption],textarea[name=notes]').forEach(el => {
     el.spellcheck = true; el.setAttribute('autocapitalize', 'sentences');
   });
+  // toast: drop ?msg from the URL so refresh doesn't repeat it; auto-hide
+  const t = document.getElementById('toast');
+  if (t) {
+    const u = new URL(location); ['msg', 'act', 'act_href'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(null, '', u);
+    setTimeout(() => t.remove(), 8000);
+  }
 })();
 </script>
 </body></html>

@@ -21,7 +21,7 @@ def test_pages_render(client):
 
 def test_task_lifecycle(client):
     client.post("/tasks", data={"name": "Filter", "interval_days": 90, "next_due": "2020-01-01"})
-    assert "badge bad" in client.get("/tasks").text
+    assert "Overdue by" in client.get("/tasks").text
     client.post("/tasks/1/done", data={"done_on": "2026-01-01", "cost": "12.5"})
     from app.db import get_db
     with get_db() as db:
@@ -43,7 +43,7 @@ def test_items_rooms_budget(client):
     r = client.post("/items", data={"name": "Fridge", "room_id": "1", "purchase_date": "2018-05-01",
                                     "life_years": "10", "replace_cost": "1800", "price": "1500"},
                     follow_redirects=False)
-    assert r.headers["location"] == "/items/1"
+    assert r.headers["location"].startswith("/items/1?msg=")
     assert "2028" in client.get("/items/1").text
     b = client.get("/budget?view=forecast").text
     assert "Fridge" in b and "$1,800" in b
@@ -121,7 +121,7 @@ def test_room_photo(client):
     client.post("/rooms", data={"name": "Kitchen"})
     client.post("/photos", data={"room_id": "1"}, files=[("files", ("k.png", _jpeg(), "image/png"))])
     assert '/photos/1/thumb' in client.get("/items").text
-    assert "Room photo" in client.get("/items?room=1").text
+    assert "cover photo" in client.get("/items?room=1").text
 
 
 def test_theme_cookie(client):
@@ -543,3 +543,205 @@ def test_backup_export_import(client, tmp_path):
     bad = client.post("/settings/import/items", files={"file": ("x.csv", b"foo,bar\n1,2\n", "text/csv")},
                       follow_redirects=False)
     assert "imp=err" in bad.headers["location"]
+
+
+# ---------------- v2.1 ----------------
+
+def test_all_destinations_and_quick_add_targets(client):
+    import re
+    home = client.get("/").text
+    links = set(re.findall(r'href="(/[^"#?]*)(?:\?[^"#]*)?#?([\w-]*)"', home))
+    for path, frag in links:
+        if path.startswith("/static") or path.startswith("/documents/"):
+            continue
+        r = client.get(path)
+        assert r.status_code == 200, path
+        if frag:
+            assert f'id="{frag}"' in r.text, f"{path}#{frag} target missing"
+
+
+def test_repeat_presets_and_legacy(client):
+    from app.db import get_db
+    client.post("/tasks", data={"name": "Monthly", "repeat": "30", "next_due": "2026-01-01"})
+    client.post("/tasks", data={"name": "Custom", "repeat": "custom", "repeat_custom": "45"})
+    client.post("/tasks", data={"name": "Legacy", "interval_days": "120"})
+    with get_db() as db:
+        got = dict(db.execute("SELECT name, interval_days FROM tasks").fetchall())
+    assert got == {"Monthly": 30, "Custom": 45, "Legacy": 120}
+    page = client.get("/tasks/2").text
+    assert "Every 45 days" in page and 'value="custom" selected' in page  # custom kept on edit
+    client.post("/tasks/2", data={"name": "Custom", "next_due": "2026-03-01", "repeat": "custom", "repeat_custom": "45"})
+    with get_db() as db:
+        assert db.execute("SELECT interval_days FROM tasks WHERE id=2").fetchone()[0] == 45
+    from app.plan import repeat_label
+    assert [repeat_label(d) for d in (0, 7, 90, 365, 730, 21, 45)] == [
+        "Does not repeat", "Weekly", "Every 3 months", "Yearly", "Every 2 years", "Every 3 weeks", "Every 45 days"]
+
+
+def test_one_time_task_and_filters(client):
+    from app.db import get_db
+    t = date.today()
+    client.post("/tasks", data={"name": "Fix fence", "repeat": "0", "next_due": t.isoformat()})
+    client.post("/tasks", data={"name": "Late", "repeat": "90", "next_due": (t - timedelta(days=3)).isoformat()})
+    client.post("/tasks", data={"name": "Soon", "repeat": "90", "next_due": (t + timedelta(days=5)).isoformat()})
+    client.post("/tasks", data={"name": "Far", "repeat": "365", "next_due": (t + timedelta(days=200)).isoformat()})
+    assert "Fix fence" in client.get("/tasks?show=today").text
+    ov = client.get("/tasks?show=overdue").text
+    assert "Late" in ov and "Soon" not in ov
+    up = client.get("/tasks").text
+    assert up.index("Late") < up.index("Fix fence") < up.index("Soon") and "Far" not in up
+    assert "Far" in client.get("/tasks?show=all&sort=name").text
+    r = client.post("/tasks/1/done", data={"next": "/tasks"}, follow_redirects=False)
+    assert "Add+details" in r.headers["location"] and "log%3D1" in r.headers["location"]
+    with get_db() as db:
+        assert db.execute("SELECT completed_at FROM tasks WHERE id=1").fetchone()[0] == t.isoformat()
+    assert "Fix fence" not in client.get("/tasks?show=all").text
+    assert "Fix fence" in client.get("/tasks?show=completed").text
+    from app import home
+    assert all(e["title"] != "Fix fence" for e in home.timeline())
+    client.post("/tasks/1/reopen")
+    assert "Fix fence" in client.get("/tasks?show=all").text
+
+
+def test_completion_details_and_no_duplicate_expense(client, tmp_path):
+    from app.db import get_db
+    from app.main import balance_data
+    client.post("/contractors", data={"name": "Sam"})
+    client.post("/items", data={"name": "Water heater"})
+    client.post("/tasks", data={"name": "Flush", "repeat": "365", "next_due": "2026-01-01", "item_id": "1"})
+    client.post("/tasks/1/done", data={"done_on": "2026-02-01"})
+    assert 'id="log-details"' in client.get("/tasks/1?log=1").text
+    client.post("/logs/1", data={"done_on": "2026-02-10", "cost": "150", "contractor_id": "1", "notes": "Sediment"},
+                files={"receipt": ("r.pdf", b"%PDF-1.4", "application/pdf")})
+    with get_db() as db:
+        assert db.execute("SELECT next_due FROM tasks").fetchone()[0] == "2027-02-10"
+        assert db.execute("SELECT COUNT(*) FROM documents WHERE item_id=1").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM fund_entries").fetchone()[0] == 0  # costs aren't copied
+    b = balance_data(2026)
+    assert b["spent"] == 150 and len(b["ledger"]) == 1 and b["by_cat"] == [("Maintenance", 150)]
+    client.post("/logs/1", data={"done_on": "2026-02-10", "cost": "175"})  # editing replaces, never adds
+    assert balance_data(2026)["spent"] == 175
+    client.post("/logs/1/delete")
+    with get_db() as db:
+        assert db.execute("SELECT next_due FROM tasks").fetchone()[0] == "2026-02-10"
+    assert balance_data(2026)["spent"] == 0
+
+
+def test_item_guided_create_filters_and_views(client):
+    from app.db import get_db
+    r = client.post("/items", data={"name": "Washer", "room_id": "__new", "new_room": "Laundry",
+                                    "category": "Appliance", "brand": "LG", "warranty_until": "2001-01-01"},
+                    files={"photo": ("w.jpg", _jpeg(), "image/jpeg")}, follow_redirects=False)
+    assert r.headers["location"].startswith("/items/1")
+    with get_db() as db:
+        row = db.execute("SELECT r.name, i.category FROM items i JOIN rooms r ON r.id=i.room_id").fetchone()
+        assert tuple(row) == ("Laundry", "Appliance")
+        assert db.execute("SELECT is_cover FROM photos WHERE item_id=1").fetchone()[0] == 1
+    client.post("/items", data={"name": "Sofa", "category": "Furniture"})
+    assert "Washer" in client.get("/items?q=lg").text and "Sofa" not in client.get("/items?q=lg").text
+    assert "Sofa" in client.get("/items?category=Furniture").text
+    assert "Washer" not in client.get("/items?category=Furniture").text
+    assert "Washer" in client.get("/items?warranty=expired").text
+    assert "Sofa" in client.get("/items?warranty=none").text
+    assert 'ilist' in client.get("/items?view=list").text
+    assert "No matches" in client.get("/items?q=zzz").text
+    html = client.get("/items").text
+    assert 'class="illus"' in html  # room illustration (no cover photo)
+    from app.main import room_art
+    assert (room_art("Master Bedroom"), room_art("Garage"), room_art("Den"), room_art("Hall")) == \
+        ("bedroom", "garage", "living", "home")
+
+
+def test_finance_entries_categories_and_ledger(client):
+    from app.main import balance_data
+    client.post("/settings/categories", data={"categories": "Repairs\nGarden\nRepairs\n"})
+    from app.finance import expense_categories
+    assert expense_categories() == ["Repairs", "Garden"]
+    client.post("/budget/entries", data={"kind": "allocation", "amount": "1000", "entry_date": "2026-01-02"})
+    client.post("/budget/entries", data={"kind": "expense", "amount": "250", "entry_date": "2026-03-04",
+                                         "category": "Repairs", "note": "Roof patch"},
+                files={"receipt": ("r.jpg", _jpeg(), "image/jpeg")})
+    client.post("/budget/entries", data={"kind": "expense", "amount": "40", "entry_date": "2026-04-01", "note": "Seeds"})
+    b = balance_data(2026)
+    assert b["by_cat"] == [("Repairs", 250), ("Uncategorized", 40)] and b["fund_total"] == 710
+    assert balance_data(2026, kind="expense")["ledger"].__len__() == 2
+    assert [e["amount"] for e in balance_data(2026, sort="amount")["ledger"]] == [1000, 250, 40]
+    assert [e["note"] for e in balance_data(2026, q="roof")["ledger"]] == ["Roof patch"]
+    page = client.get("/budget?year=2026").text
+    assert "Receipt" in page and "Available fund balance" in page and "data-tip=" in page
+    assert 'id="edit-entry"' in client.get("/budget?year=2026&edit=3").text
+    client.post("/budget/entries/3", data={"kind": "expense", "amount": "45", "entry_date": "2026-04-01",
+                                           "category": "Garden", "note": "Seeds"})
+    assert ("Garden", 45) in balance_data(2026)["by_cat"]
+    assert client.post("/budget/entries", data={"kind": "expense", "amount": "0"}).status_code == 400
+    empty = client.get("/budget?year=2019").text
+    assert "No activity in 2019" in empty and 'id="chart"' not in empty  # no arbitrary chart scale
+
+
+def test_forecast_periods_coverage_and_savings(client):
+    from app.finance import forecast_data
+    y = date.today().year
+    client.post("/items", data={"name": "Old fridge", "purchase_date": "2000-01-01", "life_years": "10", "replace_cost": "1200"})
+    client.post("/items", data={"name": "Furnace", "purchase_date": f"{y - 13}-01-01", "life_years": "15", "replace_cost": "6000"})
+    client.post("/items", data={"name": "Roof", "purchase_date": f"{y - 10}-01-01", "life_years": "25", "replace_cost": "15000"})
+    client.post("/items", data={"name": "Mystery"})
+    client.post("/budget/entries", data={"kind": "allocation", "amount": "1200", "entry_date": f"{y}-01-01"})
+    f1, f3, f10 = forecast_data(1), forecast_data(3), forecast_data(10)
+    assert f1["total"] == 1200 and f3["total"] == 7200 and f10["total"] == 7200 and forecast_data(99)["period"] == 5
+    assert (f3["covered"], f3["n_items"], [i["name"] for i in f3["missing"]]) == (3, 4, ["Mystery"])
+    assert f3["monthly"] == (7200 - 1200) / 36 and f1["monthly"] == 0
+    assert forecast_data(10)["beyond"] == 1  # roof is further out
+    page = client.get("/budget?view=forecast&period=3").text
+    assert "estimates, not predictions" in page and "Mystery" in page and "past expected life" in page
+
+
+def test_insights_never_mislead(client):
+    from app import home
+    assert home.insights() is None  # brand-new home: no card at all
+    client.post("/tasks", data={"name": "A", "repeat": "30", "next_due": "2099-01-01"})
+    ins = home.insights()
+    assert ins["schedule"] == "No overdue tasks" and ins["done90"] is None and ins["spend"] is None
+    client.post("/tasks", data={"name": "B", "repeat": "30", "next_due": "2000-01-01"})
+    assert home.insights()["schedule"] == "1 overdue of 2"
+    assert "%" not in client.get("/").text.split("Household insights")[1].split("</section>")[0]
+
+
+def test_friendly_errors_and_brand_toggle(client):
+    r = client.get("/items/999", headers={"accept": "text/html"})
+    assert r.status_code == 404 and "find that page" in r.text and "<html" in r.text
+    assert client.get("/items/999", headers={"accept": "application/json"}).json() == {"detail": "Not Found"}
+    assert client.post("/tasks", data={"name": " "}, headers={"accept": "text/html"}).status_code == 400
+    assert "/static/icon.png" in client.get("/").text
+    client.post("/settings/brand", data={"use": "1"})
+    html = client.get("/").text
+    assert "/static/brand/hearth-icon.svg" in html and "manifest.webmanifest" in html
+    assert client.get("/static/manifest.webmanifest").status_code == 200
+    client.post("/settings/brand", data={"use": "0"})
+    assert "/static/icon.png" in client.get("/").text
+
+
+def test_every_page_links_resolve(client):
+    """Crawl one level from every section with sample data; every internal link + #anchor must work."""
+    import re
+    client.post("/rooms", data={"name": "Kitchen"})
+    client.post("/items", data={"name": "Fridge", "room_id": "1", "purchase_date": "2015-01-01", "life_years": "12"})
+    client.post("/contractors", data={"name": "Pat"})
+    client.post("/tasks", data={"name": "Coils", "repeat": "180", "item_id": "1"})
+    client.post("/tasks/1/done", data={"cost": "20", "contractor_id": "1"})
+    client.post("/schedule", data={"title": "Visit", "date": "2099-01-01", "start_time": "09:00", "item_id": "1"})
+    client.post("/budget/entries", data={"kind": "expense", "amount": "5", "note": "x"})
+    pages = ["/", "/tasks", "/tasks?show=completed", "/tasks/1", "/schedule", "/schedule/1", "/items", "/items/1",
+             "/items?room=1", "/budget", "/budget?view=forecast", "/shopping", "/documents", "/gallery",
+             "/contractors", "/contractors/1", "/settings", "/search?q=fridge"]
+    seen = {}
+    for page in pages:
+        html = client.get(page).text
+        for path, frag in re.findall(r'href="(/[^"#]*)#?([\w-]*)"', html):
+            if path.startswith(("/static", "/documents/", "/photos/", "/export/", "/settings/backup")):
+                continue
+            path = path.replace("&amp;", "&")
+            if path not in seen:
+                seen[path] = client.get(path)
+                assert seen[path].status_code == 200, f"{page} -> {path}"
+            if frag:
+                assert f'id="{frag}"' in seen[path].text, f"{page} -> {path}#{frag}"

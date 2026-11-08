@@ -111,6 +111,13 @@ MIGRATIONS = [
     ("photos", "caption", "ALTER TABLE photos ADD COLUMN caption TEXT"),
     ("tasks", "gcal_event_id", "ALTER TABLE tasks ADD COLUMN gcal_event_id TEXT"),
     ("items", "warranty_notified", "ALTER TABLE items ADD COLUMN warranty_notified TEXT"),
+    # v2.1 (all additive; NULL keeps existing rows valid)
+    ("tasks", "priority", "ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"),
+    ("tasks", "completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"),  # one-time tasks
+    ("items", "category", "ALTER TABLE items ADD COLUMN category TEXT"),
+    ("fund_entries", "category", "ALTER TABLE fund_entries ADD COLUMN category TEXT"),
+    ("fund_entries", "document_id",
+     "ALTER TABLE fund_entries ADD COLUMN document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL"),
 ]
 
 

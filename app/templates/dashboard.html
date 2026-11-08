@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, blank_state %}
 {% block title %}Home{% endblock %}{% block content %}
-<div class="home-hero"><div><div class="eyebrow">Your home, organized</div><h1>{{ greeting }}</h1>
-<p>{% if att.overdue or att.due_week or att.today_events or att.warranties %}Here's what needs your attention.{% else %}Everything's on track. Nothing needs you right now.{% endif %}</p></div></div>
+<section class="welcome" aria-label="Welcome"><div><div class="eyebrow">Your home, organized</div><h1>{{ greeting }}</h1>
+<p>{% if att.overdue or att.due_week or att.today_events or att.warranties %}Here's what needs your attention.{% else %}Everything's on track. Nothing needs you right now.{% endif %}</p></div>
+{% include "illus/home.svg" %}</section>
 
 <div class="att">
 {% if att.overdue %}<a class="bad" href="/tasks"><span class="lbl">Overdue</span><b>{{ att.overdue }}</b><span class="s">maintenance task{{ 's' if att.overdue != 1 }}</span></a>{% endif %}
@@ -12,13 +13,12 @@
 {% if not (att.overdue or att.due_week or att.today_events or att.warranties or nav_counts.shopping) %}<a class="calm" href="/tasks"><span class="dot ok">{{ i('check') }}</span><span><b>All caught up</b><br><span class="s">No overdue tasks, nothing scheduled today.</span></span></a>{% endif %}
 </div>
 
-<div class="qa" aria-label="Quick actions">
+<div class="qa" role="group" aria-label="Quick actions">
+<a href="/tasks#new-task">{{ i('wrench') }} Add task</a>
+<a href="/items#new-item">{{ i('box') }} Add item</a>
+<a href="/budget#new-expense">{{ i('wallet') }} Record expense</a>
 <form method="post" action="/photos" enctype="multipart/form-data" style="display:contents"><input type="hidden" name="next" value="photo">
-<label>{{ i('camera') }} Capture<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" hidden></label></form>
-<a href="/tasks#new">{{ i('wrench') }} New task</a>
-<a href="/items#add">{{ i('box') }} Add item</a>
-<a href="/schedule#new">{{ i('calendar') }} Appointment</a>
-<a href="/shopping#new">{{ i('cart') }} Shopping list</a>
+<label>{{ i('camera') }} Capture photo<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" class="sr-only"></label></form>
 </div>
 
 <div class="home-grid">
@@ -29,25 +29,28 @@
 <div class="grow"><a href="{{ e.href }}">{{ e.title|cap }}</a><small>{{ e.date.isoformat()|nicedate }}{% if e.time %} · {{ e.time|nicetime }}{% endif %}{% if e.sub %} · {{ e.sub }}{% endif %}</small></div>
 {% if e.kind == 'task' %}<form method="post" action="/tasks/{{ e.id }}/done" class="inline"><button class="sm ghost" title="Mark done">{{ i('check') }}<span class="hide-sm">Done</span></button></form>{% endif %}
 </div>{% endfor %}{% endfor %}
-{% else %}<div class="empty">{{ i('check') }}<div><b>Nothing coming up in the next two weeks.</b><br>Add a task or appointment and it will show here.</div></div>{% endif %}
+{% else %}{% call blank_state('done', 'Nothing in the next two weeks', 'Add a task or appointment and it will show up here.') %}<a class="btn ghost" href="/tasks#new-task">{{ i('plus') }} Add task</a>{% endcall %}{% endif %}
 </div></section>
 
 <div>
-{% if show_setup %}<section class="card">{{ head('Get started', 'star', '<form method="post" action="/setup/dismiss" class="inline"><button class="sm ghost" style="padding:2px 8px">Hide</button></form>') }}<div class="card-b">
-<div class="progress"><i style="width:{{ (steps_done / steps|length * 100)|round }}%"></i></div>
-<p class="muted" style="margin:0 0 6px;font-size:13px">{{ steps_done }} of {{ steps|length }} done</p>
-<div class="steps2">{% for st in steps %}<a href="{{ st.href }}" class="{{ 'done' if st.done }}"><span class="ck">{{ i('check') }}</span><span><b>{{ st.title }}</b>{% if not st.done %}<small>{{ st.hint }}</small>{% endif %}</span></a>{% endfor %}</div>
+{% if show_setup %}<section class="card">{{ head('Get started', 'star', '<form method="post" action="/setup/dismiss" class="inline"><button class="sm ghost">Hide</button></form>') }}<div class="card-b">
+<div class="progress" role="progressbar" aria-label="Setup progress" aria-valuenow="{{ steps_done }}" aria-valuemin="0" aria-valuemax="{{ steps|length }}"><i style="width:{{ (steps_done / steps|length * 100)|round }}%"></i></div>
+<p class="muted small" style="margin:6px 0 4px">{{ steps_done }} of {{ steps|length }} done</p>
+{% if steps_done >= 4 %}<details class="more"><summary>Show remaining steps</summary>{% endif %}
+<div class="steps2">{% for st in steps if not (steps_done >= 4 and st.done) %}<a href="{{ st.href }}" class="{{ 'done' if st.done }}"><span class="ck">{{ i('check') }}</span><span><b>{{ st.title }}</b>{% if not st.done %}<small>{{ st.hint }}</small>{% endif %}</span></a>{% endfor %}</div>
+{% if steps_done >= 4 %}</details>{% endif %}
 </div></section>{% endif %}
 
 {% if shop %}<section class="card">{{ head('Shopping list', 'cart', '<a class="badge" href="/shopping">Open</a>') }}<div class="card-b">
 <div class="chips">{% for s in shop %}<a class="chip" href="/shopping?list={{ s.list }}" style="text-decoration:none">{{ s.name|cap }}</a>{% endfor %}{% if nav_counts.shopping > shop|length %}<a class="chip" href="/shopping" style="text-decoration:none">+{{ nav_counts.shopping - shop|length }} more</a>{% endif %}</div>
 </div></section>{% endif %}
 
-{% if insights %}<section class="card">{{ head('Home insights', 'trend') }}<div class="card-b"><div class="ins">
-<div><b>{{ insights.done90 }}</b><span>tasks done, last 90 days</span></div>
-<div><b>{{ (insights.on_track_pct ~ '%') if insights.on_track_pct is not none else '—' }}</b><span>of tasks on schedule</span></div>
-<div><b>{{ money(insights.spend) if insights.spend else '$0' }}</b><span>spent on the house in {{ insights.year }}</span></div>
-<div><b>{{ money(insights.repl) if insights.repl else '$0' }}</b><span>replacements due by {{ insights.year + 2 }}</span></div>
+{% if insights %}<section class="card">{{ head('Household insights', 'chart') }}<div class="card-b"><div class="ins">
+<div><b class="{{ 'ok' if insights.schedule_ok }}" style="font-size:16px">{{ insights.schedule or '—' }}</b><span>{{ 'maintenance schedule' if insights.schedule else 'no tasks yet' }}</span></div>
+<div><b>{{ insights.done90 if insights.done90 is not none else '—' }}</b><span>{{ 'tasks done, last 90 days' if insights.done90 is not none else 'nothing completed yet' }}</span></div>
+<div><b>{{ (money(insights.spend) if insights.spend else '$0') if insights.spend is not none else '—' }}</b><span>{{ ('spent on the house in ' ~ insights.year) if insights.spend is not none else 'no spending recorded' }}</span></div>
+<div><b>{{ insights.warranties if insights.warranties is not none else '—' }}</b><span>{{ 'warranties ending in 90 days' if insights.warranties is not none else 'no warranties recorded' }}</span></div>
+<div style="grid-column:1/-1"><b>{{ (money(insights.repl) if insights.repl else '$0') if insights.repl is not none else '—' }}</b><span>{% if insights.repl is not none %}expected replacement costs by {{ insights.year + 2 }} · <a href="/budget?view=forecast">forecast</a>{% else %}add lifespans to items to forecast replacements{% endif %}</span></div>
 </div></div></section>{% endif %}
 
 {% if recent %}<section class="card">{{ head('Recently done', 'check') }}<div class="card-b"><div class="list">

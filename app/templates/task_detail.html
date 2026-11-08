@@ -1,19 +1,60 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, due as fmtdue %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, repeat_picker %}
 {% block title %}{{ t.name }}{% endblock %}{% block content %}
-<a class="crumb" href="/tasks">{{ i('back') }} Maintenance</a>
-<div class="page-head"><div><h1>{{ t.name }}</h1><p>Every {{ t.interval_days }} days · next {{ fmtdue(t.next_due, today) }}</p></div>
-<div class="actions">{% if t.gcal_event_id %}<span class="badge ok" title="Synced to Google Calendar">{{ i('calendar') }} In Google Calendar</span>{% endif %}<form method="post" action="/tasks/{{ t.id }}/done"><button>{{ i('check') }} Mark done today</button></form></div></div>
-<div class="grid">
-<section class="card accent">{{ head('Details', 'sliders') }}<div class="card-b"><form class="form" method="post" action="/tasks/{{ t.id }}">
-<label>Task<input name="name" value="{{ t.name }}" required></label>
-<label>Repeat every (days)<input name="interval_days" type="number" min="1" value="{{ t.interval_days }}" required></label>
-<label>Next due<input name="next_due" type="date" value="{{ t.next_due }}" required></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == t.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>
-<label class="wide">Notes<textarea name="notes" rows="2">{{ t.notes or '' }}</textarea></label>
-<div class="actions wide"><button>Save</button></div></form>
-<form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('Delete task and its history?')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete task</button></form></div></section>
-<section class="card">{{ head('History', 'clock', '<span class="badge acc">' ~ logs|length ~ '</span>') }}<div class="card-b">
+<a class="crumb" href="/tasks">{{ i('back') }} Tasks</a>
+<div class="page-head"><div><h1>{{ t.name|cap }}</h1>
+<p>{% if t.completed_at %}<span class="badge ok">{{ i('check') }} Completed {{ t.completed_at|nicedate }}</span>{% else %}<span class="{{ 'bad' if t.next_due < today else '' }}">{{ t.next_due|duein }}</span> · {{ t.interval_days|repeat }}{% endif %}
+{% if t.priority %} · <span class="prio">{{ i('flag') }} High priority</span>{% endif %}{% if t.gcal_event_id %} · <span class="badge acc">{{ i('calendar') }} In Google Calendar</span>{% endif %}</p></div>
+<div class="actions">
+{% if t.completed_at %}<form method="post" action="/tasks/{{ t.id }}/reopen" class="inline"><button class="ghost">Reopen</button></form>
+{% else %}<form method="post" action="/tasks/{{ t.id }}/done" class="inline"><input type="hidden" name="next" value="/tasks/{{ t.id }}"><button>{{ i('check') }} Mark done</button></form>{% endif %}
+<button type="button" class="ghost" data-dialog="edit-task">{{ i('pencil') }} Edit</button></div></div>
+
+<div class="facts">
+<div><span>Repeats</span><b style="font-size:17px">{{ t.interval_days|repeat }}</b></div>
+<div><span>Last done</span><b style="font-size:17px">{{ logs[0].done_on|nicedate if logs else 'Never' }}</b></div>
+<div><span>Times done</span><b>{{ logs|length }}</b></div>
+<div><span>Total spent</span><b>{{ money(spent) if spent else '$0' }}</b></div></div>
+
+<div class="split">
+<section class="card">{{ head('History', 'clock') }}<div class="card-b">
 {% if logs %}<div class="list">{% for l in logs %}<div class="row"><div class="dot ok">{{ i('check') }}</div>
-<div class="grow"><b>{{ l.done_on }}</b><small>{{ l.contractor_name or 'DIY' }}{% if l.notes %} · {{ l.notes }}{% endif %}</small></div><span>{{ money(l.cost) }}</span></div>{% endfor %}</div>
-{% else %}{% call empty('clock', 'Never completed.') %}{% endcall %}{% endif %}</div></section></div>
+<div class="grow"><b>{{ l.done_on|nicedate }}</b><small>{{ l.contractor_name or 'DIY' }}{% if l.notes %} · {{ l.notes }}{% endif %}</small></div>
+{% if l.cost %}<b class="num">{{ money(l.cost) }}</b>{% endif %}
+<a class="btn ghost sm" href="/tasks/{{ t.id }}?log={{ l.id }}#log-details" aria-label="Edit details for {{ l.done_on }}">{{ i('pencil') }}</a></div>{% endfor %}</div>
+{% else %}{% call empty('clock', 'Not done yet. Tap “Mark done” when you finish it.') %}{% endcall %}{% endif %}
+</div></section>
+<div>
+{% if t.item_id %}<section class="card">{{ head('Related', 'link') }}<div class="card-b"><div class="list">
+<div class="row"><div class="dot acc">{{ i('box') }}</div><div class="grow"><a href="/items/{{ t.item_id }}">{{ t.item_name }}</a><small>{{ t.room_name or 'Inventory item' }}</small></div></div>
+{% for d in docs %}<div class="row"><div class="dot">{{ i('file') }}</div><div class="grow"><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a><small>{{ d.uploaded_at[:10]|nicedate }}</small></div></div>{% endfor %}
+</div></div></section>{% endif %}
+{% if t.notes %}<section class="card">{{ head('Notes', 'file') }}<div class="card-b"><p style="margin:0;white-space:pre-line">{{ t.notes }}</p></div></section>{% endif %}
+</div></div>
+
+<dialog class="panel" id="edit-task" aria-labelledby="edit-task-h"><form method="post" action="/tasks/{{ t.id }}">
+<div class="dlg-h"><h2 id="edit-task-h">Edit task</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">
+<label>Task<input name="name" value="{{ t.name }}" required></label>
+<label>Next due<input name="next_due" type="date" value="{{ t.next_due }}" required></label>
+{{ repeat_picker(presets, t.interval_days, preset_days) }}
+<label>Related item<select name="item_id"><option value="">None</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == t.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>
+<label class="chk"><input type="checkbox" name="priority" value="1" {{ 'checked' if t.priority }}> High priority</label>
+<label>Notes<textarea name="notes" rows="3">{{ t.notes or '' }}</textarea></label>
+</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-task" class="danger">{{ i('trash') }} Delete</button><span class="actions"><button type="button" class="ghost" data-close>Cancel</button><button>Save</button></span></div>
+</form></dialog>
+<form id="del-task" method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('Delete this task and its history?')" hidden></form>
+
+{% if edit_log %}<dialog class="sheet" id="log-details" aria-labelledby="log-h"><form method="post" action="/logs/{{ edit_log.id }}" enctype="multipart/form-data">
+<div class="dlg-h"><h2 id="log-h">Completion details</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><p class="muted" style="margin:0">All optional. Costs count toward your budget automatically.</p>
+<div class="form"><label>Done on<input type="date" name="done_on" value="{{ edit_log.done_on }}" required></label>
+<label>Cost<input name="cost" type="number" step="0.01" min="0" inputmode="decimal" value="{{ edit_log.cost|n }}" placeholder="0.00"></label></div>
+<label>Who did it<select name="contractor_id"><option value="">Me (DIY)</option>{% for c in contractors %}<option value="{{ c.id }}" {{ 'selected' if c.id == edit_log.contractor_id }}>{{ c.name }}{{ ' · ' ~ c.trade if c.trade }}</option>{% endfor %}</select></label>
+<label>Notes<textarea name="notes" rows="2">{{ edit_log.notes or '' }}</textarea></label>
+<label>Receipt or photo <span class="hint">saved to Documents{{ ' and ' ~ t.item_name if t.item_name }}</span><input type="file" name="receipt" accept="image/*,application/pdf"></label>
+</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-log" class="danger">Undo completion</button><span class="actions"><button type="button" class="ghost" data-close>Close</button><button>Save details</button></span></div>
+</form></dialog>
+<form id="del-log" method="post" action="/logs/{{ edit_log.id }}/delete" onsubmit="return confirm('Remove this completion?')" hidden></form>{% endif %}
 {% endblock %}

@@ -1,36 +1,67 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
-{% block title %}Inventory{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, blank_state %}
+{% block title %}{{ current.name if current else 'Inventory' }}{% endblock %}{% block content %}
+{% set base = '/items?' ~ ('room=' ~ room ~ '&' if room else '') %}
 <div class="page-head"><div><h1>{{ current.name if current else 'Inventory' }}</h1>
-<p>{{ items|length }} item{{ 's' if items|length != 1 }} · {{ money(total) }} total value</p></div>
-<a class="btn" href="#add">{{ i('plus') }} Add item</a></div>
+<p>{{ items|length }} item{{ 's' if items|length != 1 }}{% if filtered %} match{% endif %}{% if total %} · {{ money(total) }} recorded value{% endif %}</p></div>
+<div class="actions">{% if current %}<button type="button" class="ghost" data-dialog="room-edit">{{ i('pencil') }} Room</button>{% endif %}
+<button type="button" data-dialog="new-item">{{ i('plus') }} Add item</button></div></div>
 
-<div class="rooms">
-<a class="room all {{ 'on' if not room }}" href="/items"><span class="glyph">{{ i('home') }}</span><span class="lbl"><b>All rooms</b></span></a>
-{% for r in rooms %}<a class="room {{ 'on' if room == r.id }}" href="/items?room={{ r.id }}">
-{% if r.cover %}<img src="/photos/{{ r.cover }}/thumb" alt="" loading="lazy">{% else %}<span class="glyph">{{ i('door') }}</span>{% endif %}
-<span class="lbl"><b>{{ r.name }}</b><small>{{ r.n }} · {{ money(r.value) }}</small></span></a>{% endfor %}
+{% if n_all or rooms %}
+<div class="rooms" role="list" aria-label="Rooms">
+<a class="room {{ 'on' if not room }}" href="/items" role="listitem"><span class="art">{% include "illus/home.svg" %}</span><span class="lbl"><b>All rooms</b><small>{{ n_all }}</small></span></a>
+{% for r in rooms %}<a class="room {{ 'on' if room == r.id }}" href="/items?room={{ r.id }}" role="listitem"{% if room == r.id %} aria-current="true"{% endif %}>
+<span class="art">{% if r.cover %}<img src="/photos/{{ r.cover }}/thumb" alt="" loading="lazy">{% else %}{% include "illus/" ~ (r.name|room_art) ~ ".svg" %}{% endif %}</span>
+<span class="lbl"><b>{{ r.name }}</b><small>{{ r.n }} item{{ 's' if r.n != 1 }}</small></span></a>{% endfor %}
+<button type="button" class="room" data-dialog="new-room" style="padding:0;font:inherit;background:var(--surface);border-style:dashed;color:var(--accent);cursor:pointer;min-height:0">
+<span class="art" style="background:none"><span class="glyph">{{ i('plus') }}</span></span><span class="lbl" style="justify-content:center;border:0"><b>Add room</b></span></button>
 </div>
 
-{% if current %}<section class="card">{{ head('Room photo', 'camera') }}<div class="card-b actions">
-<form class="actions" method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="room_id" value="{{ current.id }}"><input type="hidden" name="next" value="/items?room={{ current.id }}">
-<input type="file" name="files" accept="image/*" required style="max-width:280px"><button class="ghost sm">{{ i('upload') }} {{ 'Replace' if current.cover else 'Upload' }}</button></form>
-{% if current.cover %}<form method="post" action="/photos/{{ current.cover }}/delete"><input type="hidden" name="next" value="/items?room={{ current.id }}"><button class="danger sm">{{ i('trash') }} Remove photo</button></form>{% endif %}
-<form method="post" action="/rooms/{{ current.id }}/delete" onsubmit="return confirm('Delete room? Items are kept.')"><button class="danger sm">{{ i('trash') }} Delete room</button></form>
-</div></section>{% endif %}
+<form class="toolbar" method="get" action="/items" role="search" aria-label="Filter inventory">
+{% if room %}<input type="hidden" name="room" value="{{ room }}">{% endif %}<input type="hidden" name="view" value="{{ view }}">
+<div class="actions" style="flex:1">
+<label class="sr-only" for="iq">Search inventory</label><input id="iq" name="q" value="{{ q }}" placeholder="Search name, brand, model, serial" style="max-width:320px;min-height:38px">
+<label class="sr-only" for="icat">Category</label><select id="icat" name="category" onchange="this.form.submit()"><option value="">All categories</option>{% for c in categories %}<option {{ 'selected' if category == c }}>{{ c }}</option>{% endfor %}<option value="__none" {{ 'selected' if category == '__none' }}>Uncategorized</option></select>
+<label class="sr-only" for="iw">Warranty</label><select id="iw" name="warranty" onchange="this.form.submit()"><option value="">Any warranty</option>{% for k, l in warranty_filters %}<option value="{{ k }}" {{ 'selected' if warranty == k }}>{{ l }}</option>{% endfor %}</select>
+<button class="ghost sm">{{ i('search') }} Filter</button>{% if filtered %}<a class="btn ghost sm" href="/items{{ '?room=' ~ room if room }}">Clear</a>{% endif %}</div>
+<div class="tabs" role="group" aria-label="View"><a href="{{ request.url.path }}?{{ request.url.query|replace('view=list','')|replace('view=grid','') }}&view=grid" class="{{ 'on' if view == 'grid' }}" aria-label="Grid view" title="Grid">{{ i('grid') }}</a><a href="{{ request.url.path }}?{{ request.url.query|replace('view=list','')|replace('view=grid','') }}&view=list" class="{{ 'on' if view == 'list' }}" aria-label="List view" title="List">{{ i('list') }}</a></div>
+</form>
+{% endif %}
 
-{% if items %}<div class="tiles" style="margin-bottom:18px">{% for it in items %}
+{% if items %}
+{% if view == 'list' %}<section class="card"><div class="card-b ilist" style="padding-top:8px"><div class="list">{% for it in items %}
+<div class="row">{% if it.cover %}<img class="thumb" src="/photos/{{ it.cover }}/thumb" alt="" loading="lazy">{% else %}<div class="dot">{{ i('box') }}</div>{% endif %}
+<div class="grow"><a href="/items/{{ it.id }}">{{ it.name|cap }}</a><small>{{ [it.brand, it.model]|select|join(' ') or (it.category or '') }}{% if it.room_name and not room %} · {{ it.room_name }}{% endif %}</small></div>
+{% if it.warranty_until %}{% if it.warranty_until < today %}<span class="badge">Warranty expired</span>{% elif it.warranty_until <= soon %}<span class="badge warn">{{ i('shield') }} Ends {{ it.warranty_until|nicedate }}</span>{% else %}<span class="badge ok hide-sm">{{ i('shield') }} Warranty</span>{% endif %}{% endif %}
+<b class="num hide-sm">{{ money(it.price) }}</b></div>{% endfor %}</div></div></section>
+{% else %}<div class="tiles">{% for it in items %}
 <a class="tile" href="/items/{{ it.id }}"><div class="ph">
 {% if it.cover %}<img src="/photos/{{ it.cover }}/thumb" alt="" loading="lazy">{% else %}<div class="placeholder">{{ i('box') }}</div>{% endif %}
-{% if it.warranty_until and it.warranty_until >= today %}<span class="corner badge glass">{{ i('shield') }} Warranty</span>{% endif %}</div>
-<div class="body"><b>{{ it.name|cap }}</b><span class="muted" style="font-size:13px">{{ it.brand or '' }} {{ it.model or '' }}&nbsp;</span>
-<div class="meta">{% if it.room_name %}<span class="badge">{{ i('door') }} {{ it.room_name }}</span>{% else %}<span></span>{% endif %}<b>{{ money(it.price) }}</b></div></div></a>
-{% endfor %}</div>
-{% else %}<section class="card"><div class="card-b">{% call empty('box', 'No items here yet. Add your first one below.') %}{% endcall %}</div></section>{% endif %}
+{% if it.warranty_until and it.warranty_until >= today %}<span class="corner badge {{ 'warn' if it.warranty_until <= soon else 'glass' }}">{{ i('shield') }} {{ 'Ends soon' if it.warranty_until <= soon else 'Warranty' }}</span>{% endif %}</div>
+<div class="body"><b>{{ it.name|cap }}</b><span class="muted small">{{ [it.brand, it.model]|select|join(' ') or (it.category or ' ') }}</span>
+<div class="meta">{% if it.room_name and not room %}<span class="badge">{{ it.room_name }}</span>{% else %}<span></span>{% endif %}{% if it.price %}<b class="num">{{ money(it.price) }}</b>{% endif %}</div></div></a>
+{% endfor %}</div>{% endif %}
+{% elif filtered %}{% call blank_state('home', 'No matches', 'Try a different word, or clear the filters.') %}<a class="btn ghost" href="/items{{ '?room=' ~ room if room }}">Clear filters</a>{% endcall %}
+{% elif current %}{% call blank_state(current.name|room_art, 'Nothing in ' ~ current.name ~ ' yet', 'Add appliances, fixtures and valuables. A photo of each helps with insurance claims.') %}
+<button type="button" data-dialog="new-item">{{ i('plus') }} Add item</button>{% endcall %}
+{% else %}{% call blank_state('home', 'Start your home inventory', 'Add rooms, then the things you own: appliances, systems, valuables. Snap a photo and Hearth tracks warranties and replacement dates.') %}
+<button type="button" data-dialog="new-item">{{ i('plus') }} Add your first item</button><button type="button" class="ghost" data-dialog="new-room">Add a room</button>{% endcall %}{% endif %}
 
-<div class="grid" id="add">
-<section class="card accent">{{ head('Add item', 'plus') }}<div class="card-b">
-<form class="form" method="post" action="/items">{% set item = None %}{% include "_item_form.html" %}<div class="wide"><button>{{ i('plus') }} Add item</button></div></form></div></section>
-<section class="card">{{ head('Add room', 'door') }}<div class="card-b">
-<form class="form" method="post" action="/rooms"><label>Room name<input name="name" required placeholder="Kitchen"></label><button class="ghost">{{ i('plus') }} Add room</button></form>
-<p class="muted" style="margin-bottom:0">Open a room to give it a cover photo.</p></div></section></div>
+<dialog class="panel" id="new-item" aria-labelledby="new-item-h"><form method="post" action="/items" enctype="multipart/form-data">
+<div class="dlg-h"><h2 id="new-item-h">Add item</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% set item = none %}{% include "_item_form.html" %}</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>{{ i('plus') }} Add item</button></div></form></dialog>
+
+<dialog class="sheet" id="new-room" aria-labelledby="new-room-h"><form method="post" action="/rooms">
+<div class="dlg-h"><h2 id="new-room-h">Add room</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b"><label>Room name<input name="name" required placeholder="Kitchen" autocomplete="off"></label></div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>Add room</button></div></form></dialog>
+
+{% if current %}<dialog class="sheet" id="room-edit" aria-labelledby="room-edit-h"><div class="dlg-h"><h2 id="room-edit-h">{{ current.name }}</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">
+<form method="post" action="/rooms/{{ current.id }}" class="form"><label>Name<input name="name" value="{{ current.name }}" required></label><button class="ghost">Rename</button></form>
+<form method="post" action="/photos" enctype="multipart/form-data" class="actions"><input type="hidden" name="room_id" value="{{ current.id }}"><input type="hidden" name="next" value="/items?room={{ current.id }}">
+<label class="btn ghost">{{ i('camera') }} {{ 'Replace' if current.cover else 'Add' }} cover photo<input type="file" name="files" accept="image/*" class="sr-only" onchange="this.form.submit()"></label></form>
+{% if current.cover %}<form method="post" action="/photos/{{ current.cover }}/delete"><input type="hidden" name="next" value="/items?room={{ current.id }}"><button class="ghost sm">Use illustration instead</button></form>{% endif %}
+<form method="post" action="/rooms/{{ current.id }}/delete" onsubmit="return confirm('Delete this room? Its items are kept.')"><button class="danger sm">{{ i('trash') }} Delete room</button></form>
+</div></dialog>{% endif %}
 {% endblock %}

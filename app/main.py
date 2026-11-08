@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import DEVELOPER, REPO_URL, __version__, backup, gcal, home, notify, shopping
+from . import DEVELOPER, REPO_URL, __version__, backup, finance, gcal, home, notify, plan, shopping
 from . import search as search_mod
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
@@ -60,6 +60,18 @@ def _hl(v, q):
 
 
 templates.env.filters["hl"] = _hl
+templates.env.filters["repeat"] = lambda d: plan.repeat_label(d)
+
+
+def _due_label(v: str) -> str:
+    d = (date.fromisoformat(v[:10]) - date.today()).days
+    if d < -1:
+        return f"Overdue by {-d} days"
+    return {-1: "Overdue by 1 day", 0: "Due today", 1: "Due tomorrow"}.get(d, f"Due in {d} days" if d <= 13 else
+                                                                           f"Due {_nicedate(v)}")
+
+
+templates.env.filters["duein"] = _due_label
 templates.env.filters["n"] = lambda v: "" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
 
 DEFAULT_TASKS = [
@@ -113,6 +125,24 @@ async def basic_auth(request: Request, call_next):
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
 
+from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
+
+
+@app.exception_handler(StarletteHTTPException)
+async def friendly_errors(request: Request, exc: StarletteHTTPException):
+    """HTML pages get a readable error page; API/fetch callers keep JSON."""
+    wants_html = "text/html" in request.headers.get("accept", "") and \
+        request.headers.get("x-requested-with") != "fetch" and not request.url.path.startswith("/api")
+    if not wants_html:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    msg = {404: "We couldn't find that page. It may have been deleted."}.get(exc.status_code, str(exc.detail))
+    resp = render(request, "error.html", code=exc.status_code, message=msg,
+                  back_href=request.headers.get("referer") or "/")
+    resp.status_code = exc.status_code
+    return resp
+
+
 def back(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
@@ -138,12 +168,12 @@ THEMES = {  # key: (label, swatch colours)
 }
 SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
     "home": ("Home", "home", []),
-    "plan": ("Plan", "calendar", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar")]),
+    "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar")]),
     "organize": ("Organize", "box", [("/items", "Inventory", "box"), ("/shopping", "Shopping", "cart"),
-                                     ("/documents", "Documents", "file"), ("/gallery", "Photos", "camera"),
+                                     ("/documents", "Documents", "file"), ("/gallery", "Photos", "images"),
                                      ("/contractors", "Contractors", "users")]),
     "finances": ("Finances", "wallet", [("/budget", "Budget", "wallet"),
-                                        ("/budget?view=forecast", "Forecast", "trend")]),
+                                        ("/budget?view=forecast", "Forecast", "chart")]),
 }
 
 
@@ -172,6 +202,10 @@ def render(request: Request, name: str, **ctx):
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
                      "repo": REPO_URL}
     ctx["sections"] = SECTIONS
+    v2 = get_setting("brand_v2") == "1"
+    ctx["brand"] = {"v2": v2, "icon": "/static/brand/hearth-icon.svg" if v2 else "/static/icon.png",
+                    "favicon": "/static/favicon.svg" if v2 else "/static/icon.png"}
+    ctx["msg"] = request.query_params.get("msg")
     ctx["section"] = section_for(request.url.path)
     path, q = request.url.path, request.url.query
     full = path + (f"?{q}" if q else "")
@@ -181,15 +215,12 @@ def render(request: Request, name: str, **ctx):
     with get_db() as db:
         ctx["nav_counts"] = {
             "shopping": db.execute("SELECT COUNT(*) FROM shopping_items WHERE status='needed'").fetchone()[0],
-            "overdue": db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ?",
+            "overdue": db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL",
                                   (ctx["today"],)).fetchone()[0]}
     return templates.TemplateResponse(request, name, ctx)
 
 
-def replacement_year(item) -> int | None:
-    if not item["purchase_date"] or not item["life_years"]:
-        return None
-    return int(item["purchase_date"][:4]) + int(item["life_years"])
+replacement_year = finance.replacement_year
 
 
 # ---------- dashboard ----------
@@ -229,27 +260,85 @@ def search_page(request: Request, q: str = ""):
 
 # ---------- tasks ----------
 
+TASK_FILTERS = [("today", "Today"), ("upcoming", "Upcoming"), ("overdue", "Overdue"),
+                ("completed", "Completed"), ("all", "All tasks")]
+TASK_SORTS = [("due", "Due date"), ("priority", "Priority"), ("room", "Room"), ("name", "Name")]
+
+
+def toast_url(path: str, msg: str, act: str | None = None, act_href: str | None = None) -> str:
+    from urllib.parse import urlencode
+    q = {"msg": msg}
+    if act and act_href:
+        q.update(act=act, act_href=act_href)
+    sep = "&" if "?" in path else "?"
+    frag = ""
+    if "#" in path:
+        path, frag = path.split("#", 1)
+        frag = "#" + frag
+    return f"{path}{sep}{urlencode(q)}{frag}"
+
+
+def safe_next(v: str | None, default: str) -> str:
+    return v if v and v.startswith("/") and not v.startswith("//") else default
+
+
 @app.get("/tasks")
-def tasks_page(request: Request):
+def tasks_page(request: Request, show: str = "upcoming", sort: str = "due"):
+    today = date.today()
+    t_iso, week = today.isoformat(), (today + timedelta(days=30)).isoformat()
     with get_db() as db:
-        tasks = db.execute(
-            "SELECT t.*, i.name AS item_name FROM tasks t LEFT JOIN items i ON i.id=t.item_id "
-            "ORDER BY next_due").fetchall()
+        active = db.execute(
+            "SELECT t.*, i.name AS item_name, r.name AS room_name FROM tasks t "
+            "LEFT JOIN items i ON i.id=t.item_id LEFT JOIN rooms r ON r.id=i.room_id "
+            "WHERE t.completed_at IS NULL").fetchall()
+        logs = db.execute(
+            "SELECT l.*, t.name AS task_name, t.interval_days, c.name AS contractor_name, i.name AS item_name "
+            "FROM task_logs l JOIN tasks t ON t.id=l.task_id LEFT JOIN contractors c ON c.id=l.contractor_id "
+            "LEFT JOIN items i ON i.id=t.item_id ORDER BY l.done_on DESC, l.id DESC LIMIT 100").fetchall()
         items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
-        contractors = db.execute("SELECT id, name FROM contractors ORDER BY name").fetchall()
-    return render(request, "tasks.html", tasks=tasks, items=items, contractors=contractors)
+        n_all = db.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+    groups = {
+        "today": [t for t in active if t["next_due"] == t_iso],
+        "overdue": [t for t in active if t["next_due"] < t_iso],
+        "upcoming": [t for t in active if t["next_due"] <= week],  # overdue first, then next 30 days
+        "all": list(active),
+    }
+    show = show if show in dict(TASK_FILTERS) else "upcoming"
+    keyf = {"due": lambda t: (t["next_due"], -t["priority"]),
+            "priority": lambda t: (-t["priority"], t["next_due"]),
+            "room": lambda t: ((t["room_name"] or "~").lower(), t["next_due"]),
+            "name": lambda t: t["name"].lower()}[sort if sort in dict(TASK_SORTS) else "due"]
+    rows = sorted(groups.get(show, []), key=keyf)
+    counts = {k: len(v) for k, v in groups.items()}
+    counts["completed"] = sum(1 for l in logs if l["done_on"] >= (today - timedelta(days=90)).isoformat())
+    return render(request, "tasks.html", rows=rows, logs=logs, show=show, sort=sort, filters=TASK_FILTERS,
+                  sorts=TASK_SORTS, counts=counts, items=items, presets=plan.PRESETS, n_all=n_all,
+                  today_d=today)
+
+
+def _task_fields(form, fallback_interval: int | None = None):
+    legacy = form.get("interval_days")  # older forms/clients post the raw day count
+    interval = plan.parse_repeat(form.get("repeat"), form.get("repeat_custom"),
+                                 int(legacy) if legacy not in (None, "") else fallback_interval)
+    return dict(name=(form.get("name") or "").strip(), interval_days=interval,
+                next_due=blank(form.get("next_due")) or date.today().isoformat(),
+                item_id=num(form.get("item_id"), int), notes=blank(form.get("notes")),
+                priority=1 if form.get("priority") else 0)
 
 
 @app.post("/tasks")
-def task_create(bg: BackgroundTasks, name: str = Form(...), interval_days: int = Form(...),
-                next_due: str = Form(None), item_id: str = Form(None), notes: str = Form(None)):
+async def task_create(request: Request, bg: BackgroundTasks):
+    form = await request.form()
+    f = _task_fields(form)
+    if not f["name"]:
+        raise HTTPException(400, "Give the task a name.")
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO tasks (name, interval_days, next_due, item_id, notes) VALUES (?,?,?,?,?)",
-            (name.strip(), interval_days, blank(next_due) or date.today().isoformat(),
-             num(item_id, int), blank(notes)))
+            "INSERT INTO tasks (name, interval_days, next_due, item_id, notes, priority) VALUES (?,?,?,?,?,?)",
+            (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"], f["priority"]))
     bg.add_task(gcal.sync_task, cur.lastrowid)
-    return back("/tasks")
+    nxt = safe_next(form.get("next"), "/tasks?show=all")
+    return back(toast_url(nxt, f"Added “{f['name']}”"))
 
 
 @app.post("/tasks/seed")
@@ -257,65 +346,139 @@ def task_seed(bg: BackgroundTasks):
     today = date.today()
     with get_db() as db:
         existing = {r[0] for r in db.execute("SELECT name FROM tasks")}
-        db.executemany(
-            "INSERT INTO tasks (name, interval_days, next_due) VALUES (?,?,?)",
-            [(n, d, (today + timedelta(days=min(d, 30))).isoformat())
-             for n, d in DEFAULT_TASKS if n not in existing])
+        new = [(n, d, (today + timedelta(days=min(d, 30))).isoformat())
+               for n, d in DEFAULT_TASKS if n not in existing]
+        db.executemany("INSERT INTO tasks (name, interval_days, next_due) VALUES (?,?,?)", new)
     bg.add_task(gcal.sync_all)
-    return back("/tasks")
+    return back(toast_url("/tasks?show=all", f"Added {len(new)} common home tasks"))
 
 
 @app.post("/tasks/{task_id}/done")
 def task_done(bg: BackgroundTasks, task_id: int, done_on: str = Form(None), cost: str = Form(None),
-              contractor_id: str = Form(None), notes: str = Form(None)):
+              contractor_id: str = Form(None), notes: str = Form(None), next: str = Form(None)):
     done = blank(done_on) or date.today().isoformat()
     with get_db() as db:
         t = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         if not t:
             raise HTTPException(404)
-        db.execute(
+        cur = db.execute(
             "INSERT INTO task_logs (task_id, done_on, cost, contractor_id, notes) VALUES (?,?,?,?,?)",
             (task_id, done, num(cost), num(contractor_id, int), blank(notes)))
-        nxt = date.fromisoformat(done) + timedelta(days=t["interval_days"])
-        db.execute("UPDATE tasks SET next_due=?, last_notified=NULL WHERE id=?",
-                   (nxt.isoformat(), task_id))
+        log_id = cur.lastrowid
+        if t["interval_days"] > 0:
+            nxt = date.fromisoformat(done) + timedelta(days=t["interval_days"])
+            db.execute("UPDATE tasks SET next_due=?, last_notified=NULL WHERE id=?", (nxt.isoformat(), task_id))
+            bg.add_task(gcal.sync_task, task_id)
+        else:  # one-time task: complete it and take it off the calendar
+            db.execute("UPDATE tasks SET completed_at=?, gcal_event_id=NULL WHERE id=?", (done, task_id))
+            bg.add_task(gcal.delete_event, t["gcal_event_id"])
+    return back(toast_url(safe_next(next, "/tasks"), f"Done: {t['name']}",
+                          "Add details", f"/tasks/{task_id}?log={log_id}#log-details"))
+
+
+@app.post("/tasks/{task_id}/reopen")
+def task_reopen(bg: BackgroundTasks, task_id: int):
+    with get_db() as db:
+        db.execute("UPDATE tasks SET completed_at=NULL WHERE id=?", (task_id,))
     bg.add_task(gcal.sync_task, task_id)
-    return back("/tasks")
+    return back(toast_url(f"/tasks/{task_id}", "Task reopened"))
+
+
+@app.post("/logs/{log_id}")
+async def log_update(request: Request, bg: BackgroundTasks, log_id: int):
+    """Add details after a quick 'Done': date, cost, who, notes, receipt."""
+    form = await request.form()
+    with get_db() as db:
+        lg = db.execute("SELECT l.*, t.interval_days, t.item_id, t.name AS task_name, t.completed_at "
+                        "FROM task_logs l JOIN tasks t ON t.id=l.task_id WHERE l.id=?", (log_id,)).fetchone()
+        if not lg:
+            raise HTTPException(404)
+        done = blank(form.get("done_on")) or lg["done_on"]
+        db.execute("UPDATE task_logs SET done_on=?, cost=?, contractor_id=?, notes=? WHERE id=?",
+                   (done, num(form.get("cost")), num(form.get("contractor_id"), int),
+                    blank(form.get("notes")), log_id))
+        latest = db.execute("SELECT id FROM task_logs WHERE task_id=? ORDER BY done_on DESC, id DESC LIMIT 1",
+                            (lg["task_id"],)).fetchone()[0]
+        if done != lg["done_on"] and latest == log_id and lg["interval_days"] > 0:
+            nxt = date.fromisoformat(done) + timedelta(days=lg["interval_days"])
+            db.execute("UPDATE tasks SET next_due=? WHERE id=?", (nxt.isoformat(), lg["task_id"]))
+            bg.add_task(gcal.sync_task, lg["task_id"])
+        receipt = form.get("receipt")
+        if receipt is not None and getattr(receipt, "filename", ""):
+            stored = f"{uuid.uuid4().hex}{Path(receipt.filename).suffix.lower()[:10]}"
+            with (data_dir() / "uploads" / stored).open("wb") as fh:
+                fh.write(await receipt.read())
+            db.execute("INSERT INTO documents (title, filename, stored_name, item_id, uploaded_at) VALUES (?,?,?,?,?)",
+                       (f"Receipt: {lg['task_name']} ({done})", Path(receipt.filename).name, stored,
+                        lg["item_id"], datetime.now().isoformat(timespec="seconds")))
+    return back(toast_url(safe_next(form.get("next"), f"/tasks/{lg['task_id']}"), "Details saved"))
+
+
+@app.post("/logs/{log_id}/delete")
+def log_delete(bg: BackgroundTasks, log_id: int):
+    """Remove a completion (e.g. tapped Done by mistake). Restores the previous due date."""
+    with get_db() as db:
+        lg = db.execute("SELECT l.*, t.interval_days, t.next_due FROM task_logs l JOIN tasks t ON t.id=l.task_id "
+                        "WHERE l.id=?", (log_id,)).fetchone()
+        if not lg:
+            raise HTTPException(404)
+        db.execute("DELETE FROM task_logs WHERE id=?", (log_id,))
+        if lg["interval_days"] > 0 and lg["next_due"] == (
+                date.fromisoformat(lg["done_on"]) + timedelta(days=lg["interval_days"])).isoformat():
+            prev = db.execute("SELECT done_on FROM task_logs WHERE task_id=? ORDER BY done_on DESC LIMIT 1",
+                              (lg["task_id"],)).fetchone()
+            restored = (date.fromisoformat(prev[0]) + timedelta(days=lg["interval_days"])).isoformat() \
+                if prev else lg["done_on"]
+            db.execute("UPDATE tasks SET next_due=? WHERE id=?", (restored, lg["task_id"]))
+        db.execute("UPDATE tasks SET completed_at=NULL WHERE id=? AND interval_days=0", (lg["task_id"],))
+    bg.add_task(gcal.sync_task, lg["task_id"])
+    return back(toast_url(f"/tasks/{lg['task_id']}", "Completion removed"))
 
 
 @app.get("/tasks/{task_id}")
-def task_detail(request: Request, task_id: int):
+def task_detail(request: Request, task_id: int, log: int | None = None):
     with get_db() as db:
-        t = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        t = db.execute("SELECT t.*, i.name AS item_name, i.room_id, r.name AS room_name FROM tasks t "
+                       "LEFT JOIN items i ON i.id=t.item_id LEFT JOIN rooms r ON r.id=i.room_id WHERE t.id=?",
+                       (task_id,)).fetchone()
         if not t:
             raise HTTPException(404)
         logs = db.execute(
             "SELECT l.*, c.name AS contractor_name FROM task_logs l "
-            "LEFT JOIN contractors c ON c.id=l.contractor_id WHERE task_id=? ORDER BY done_on DESC",
+            "LEFT JOIN contractors c ON c.id=l.contractor_id WHERE task_id=? ORDER BY done_on DESC, l.id DESC",
             (task_id,)).fetchall()
         items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
-    return render(request, "task_detail.html", t=t, logs=logs, items=items)
+        contractors = db.execute("SELECT id, name, trade FROM contractors ORDER BY name").fetchall()
+        docs = db.execute("SELECT * FROM documents WHERE item_id=? ORDER BY uploaded_at DESC LIMIT 6",
+                          (t["item_id"],)).fetchall() if t["item_id"] else []
+    edit_log = next((l for l in logs if l["id"] == log), None)
+    return render(request, "task_detail.html", t=t, logs=logs, items=items, contractors=contractors,
+                  docs=docs, edit_log=edit_log, presets=plan.PRESETS, preset_days=plan.PRESET_DAYS,
+                  spent=sum(l["cost"] or 0 for l in logs))
 
 
 @app.post("/tasks/{task_id}")
-def task_update(bg: BackgroundTasks, task_id: int, name: str = Form(...), interval_days: int = Form(...),
-                next_due: str = Form(...), item_id: str = Form(None), notes: str = Form(None)):
+async def task_update(request: Request, bg: BackgroundTasks, task_id: int):
+    form = await request.form()
     with get_db() as db:
-        db.execute(
-            "UPDATE tasks SET name=?, interval_days=?, next_due=?, item_id=?, notes=? WHERE id=?",
-            (name.strip(), interval_days, next_due, num(item_id, int), blank(notes), task_id))
+        cur = db.execute("SELECT interval_days FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if not cur:
+            raise HTTPException(404)
+        f = _task_fields(form, cur[0])
+        db.execute("UPDATE tasks SET name=?, interval_days=?, next_due=?, item_id=?, notes=?, priority=? WHERE id=?",
+                   (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"], f["priority"], task_id))
     bg.add_task(gcal.sync_task, task_id)
-    return back(f"/tasks/{task_id}")
+    return back(toast_url(f"/tasks/{task_id}", "Saved"))
 
 
 @app.post("/tasks/{task_id}/delete")
 def task_delete(bg: BackgroundTasks, task_id: int):
     with get_db() as db:
-        r = db.execute("SELECT gcal_event_id FROM tasks WHERE id=?", (task_id,)).fetchone()
+        r = db.execute("SELECT gcal_event_id, name FROM tasks WHERE id=?", (task_id,)).fetchone()
         db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
     if r and r[0]:
         bg.add_task(gcal.delete_event, r[0])
-    return back("/tasks")
+    return back(toast_url("/tasks", f"Deleted “{r[1]}”" if r else "Deleted"))
 
 
 # ---------- schedule (appointments & reminders) ----------
@@ -545,9 +708,10 @@ def shopping_clear(list: str = Form(...), spent: str = Form(None), store: str = 
         amt = num(spent)
         if amt and amt > 0:
             where = f" at {blank(store)}" if blank(store) else ""
-            db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note) VALUES (?,?,?,?)",
+            db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, category) VALUES (?,?,?,?,?)",
                        (ts[:10], "expense", amt,
-                        f"{shopping.LISTS[lk]}{where} ({n} item{'s' if n != 1 else ''})"))
+                        f"{shopping.LISTS[lk]}{where} ({n} item{'s' if n != 1 else ''})",
+                        "Supplies" if lk == "supplies" else "Groceries"))
     return back(f"/shopping?list={lk}")
 
 
@@ -570,40 +734,107 @@ def shopping_text(list: str = "groceries"):
 # ---------- rooms & items ----------
 
 ITEM_FIELDS = ["name", "room_id", "brand", "model", "serial", "purchase_date", "price",
-               "warranty_until", "life_years", "replace_cost", "notes"]
+               "warranty_until", "life_years", "replace_cost", "notes", "category"]
+ROOM_ART = [("kitchen", "kitchen"), ("pantry", "kitchen"), ("dining", "kitchen"), ("living", "living"),
+            ("family", "living"), ("lounge", "living"), ("den", "living"), ("office", "living"),
+            ("bed", "bedroom"), ("nursery", "bedroom"), ("guest", "bedroom"), ("garage", "garage"),
+            ("shed", "garage"), ("workshop", "garage"), ("bath", "bathroom"), ("toilet", "bathroom"),
+            ("powder", "bathroom"), ("laundry", "utility"), ("utility", "utility"), ("basement", "utility"),
+            ("mechanical", "utility"), ("attic", "utility"), ("outdoor", "home"), ("yard", "home")]
 
 
-def item_values(form) -> list:
-    return [form.get("name", "").strip(), num(form.get("room_id"), int),
+def room_art(name: str | None) -> str:
+    n = (name or "").lower()
+    return next((art for key, art in ROOM_ART if key in n), "home")
+
+
+templates.env.filters["room_art"] = room_art
+
+
+def resolve_room(db, form) -> int | None:
+    """Room select supports '__new' + a typed name, so rooms can be created inline."""
+    rid = form.get("room_id")
+    if rid == "__new":
+        name = blank(form.get("new_room"))
+        if not name:
+            return None
+        db.execute("INSERT OR IGNORE INTO rooms (name) VALUES (?)", (name,))
+        return db.execute("SELECT id FROM rooms WHERE name=?", (name,)).fetchone()[0]
+    return num(rid, int)
+
+
+def item_values(form, room_id=None) -> list:
+    return [form.get("name", "").strip(), room_id if room_id is not None else num(form.get("room_id"), int),
             blank(form.get("brand")), blank(form.get("model")), blank(form.get("serial")),
             blank(form.get("purchase_date")), num(form.get("price")),
             blank(form.get("warranty_until")), num(form.get("life_years"), int),
-            num(form.get("replace_cost")), blank(form.get("notes"))]
+            num(form.get("replace_cost")), blank(form.get("notes")), blank(form.get("category"))]
+
+
+WARRANTY_FILTERS = [("active", "Under warranty"), ("expiring", "Expiring ≤ 60 days"),
+                    ("expired", "Expired"), ("none", "No warranty info")]
 
 
 @app.get("/items")
-def items_page(request: Request, room: int | None = None):
+def items_page(request: Request, room: int | None = None, q: str = "", category: str = "",
+               warranty: str = "", view: str = "grid"):
+    today = date.today()
+    soon = (today + timedelta(days=60)).isoformat()
+    where, args = [], []
+    if room:
+        where.append("i.room_id=?"); args.append(room)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        where.append("(i.name LIKE ? OR i.brand LIKE ? OR i.model LIKE ? OR i.serial LIKE ? OR i.notes LIKE ?)")
+        args += [like] * 5
+    if category == "__none":
+        where.append("i.category IS NULL")
+    elif category:
+        where.append("i.category=?")
+        args.append(category)
+    if warranty == "active":
+        where.append("i.warranty_until > ?"); args.append(soon)
+    elif warranty == "expiring":
+        where.append("i.warranty_until BETWEEN ? AND ?"); args += [today.isoformat(), soon]
+    elif warranty == "expired":
+        where.append("i.warranty_until < ?"); args.append(today.isoformat())
+    elif warranty == "none":
+        where.append("i.warranty_until IS NULL")
     with get_db() as db:
         rooms = db.execute(
             "SELECT r.*, COUNT(i.id) AS n, COALESCE(SUM(i.price),0) AS value, "
             "(SELECT id FROM photos p WHERE p.room_id=r.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
             "FROM rooms r LEFT JOIN items i ON i.room_id=r.id GROUP BY r.id ORDER BY r.name").fetchall()
-        q = ("SELECT i.*, r.name AS room_name, "
-             "(SELECT id FROM photos p WHERE p.item_id=i.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
-             "FROM items i LEFT JOIN rooms r ON r.id=i.room_id")
-        items = (db.execute(q + " WHERE i.room_id=? ORDER BY i.name", (room,)) if room
-                 else db.execute(q + " ORDER BY r.name, i.name")).fetchall()
-    total = sum(i["price"] or 0 for i in items)
+        items = db.execute(
+            "SELECT i.*, r.name AS room_name, "
+            "(SELECT id FROM photos p WHERE p.item_id=i.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
+            "FROM items i LEFT JOIN rooms r ON r.id=i.room_id"
+            + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY r.name, i.name", args).fetchall()
+        n_all = db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        unassigned = db.execute("SELECT COUNT(*) FROM items WHERE room_id IS NULL").fetchone()[0]
+        cats = [r[0] for r in db.execute("SELECT DISTINCT category FROM items WHERE category IS NOT NULL")]
     current = next((r for r in rooms if r["id"] == room), None)
-    return render(request, "items.html", rooms=rooms, items=items, room=room, total=total,
-                  current=current)
+    filtered = bool(q.strip() or category or warranty)
+    return render(request, "items.html", rooms=rooms, items=items, room=room, current=current,
+                  total=sum(i["price"] or 0 for i in items), q=q, category=category, warranty=warranty,
+                  view="list" if view == "list" else "grid", n_all=n_all, unassigned=unassigned,
+                  categories=sorted(set(plan.ITEM_CATEGORIES) | set(cats)), filtered=filtered,
+                  warranty_filters=WARRANTY_FILTERS, soon=soon)
 
 
 @app.post("/rooms")
 def room_create(name: str = Form(...)):
     with get_db() as db:
         db.execute("INSERT OR IGNORE INTO rooms (name) VALUES (?)", (name.strip(),))
-    return back("/items")
+        rid = db.execute("SELECT id FROM rooms WHERE name=?", (name.strip(),)).fetchone()[0]
+    return back(toast_url(f"/items?room={rid}", f"Added room “{name.strip()}”"))
+
+
+@app.post("/rooms/{room_id}")
+def room_rename(room_id: int, name: str = Form(...)):
+    with get_db() as db:
+        db.execute("UPDATE rooms SET name=? WHERE id=?", (name.strip(), room_id))
+    return back(toast_url(f"/items?room={room_id}", "Room renamed"))
 
 
 @app.post("/rooms/{room_id}/delete")
@@ -611,19 +842,26 @@ def room_delete(room_id: int):
     with get_db() as db:
         purge_photos(db, "room_id", room_id)
         db.execute("DELETE FROM rooms WHERE id=?", (room_id,))
-    return back("/items")
+    return back(toast_url("/items", "Room deleted. Its items were kept."))
 
 
 @app.post("/items")
 async def item_create(request: Request):
     form = await request.form()
     if not form.get("name", "").strip():
-        raise HTTPException(400, "name required")
+        raise HTTPException(400, "Give the item a name.")
     with get_db() as db:
+        rid = resolve_room(db, form)
         cur = db.execute(
             f"INSERT INTO items ({','.join(ITEM_FIELDS)}) VALUES ({','.join('?' * len(ITEM_FIELDS))})",
-            item_values(form))
-    return back(f"/items/{cur.lastrowid}")
+            item_values(form, rid))
+        iid = cur.lastrowid
+        photo = form.get("photo")
+        if photo is not None and getattr(photo, "filename", ""):
+            a, b = save_image(await photo.read())
+            db.execute("INSERT INTO photos (item_id, stored_name, thumb_name, is_cover, created_at) VALUES (?,?,?,1,?)",
+                       (iid, a, b, datetime.now().isoformat(timespec="seconds")))
+    return back(toast_url(f"/items/{iid}", f"Added “{form['name'].strip()}”"))
 
 
 @app.get("/items/{item_id}")
@@ -669,6 +907,7 @@ def item_detail(request: Request, item_id: int):
     w_days = (date.fromisoformat(item["warranty_until"]) - date.today()).days \
         if item["warranty_until"] else None
     return render(request, "item_detail.html", item=item, rooms=rooms, docs=docs, tasks=tasks,
+                  categories=plan.ITEM_CATEGORIES, presets=plan.PRESETS,
                   history=history, photos=photos, upcoming=upcoming, contractors=contractors,
                   supplies=supplies, spent=spent, w_days=w_days, all_contractors=all_contractors,
                   replace_year=replacement_year(item))
@@ -678,10 +917,11 @@ def item_detail(request: Request, item_id: int):
 async def item_update(request: Request, item_id: int):
     form = await request.form()
     with get_db() as db:
+        rid = resolve_room(db, form)
         db.execute(
             f"UPDATE items SET {','.join(f + '=?' for f in ITEM_FIELDS)} WHERE id=?",
-            item_values(form) + [item_id])
-    return back(f"/items/{item_id}")
+            item_values(form, rid) + [item_id])
+    return back(toast_url(f"/items/{item_id}", "Saved"))
 
 
 @app.post("/items/{item_id}/delete")
@@ -993,86 +1233,23 @@ def contractor_delete(cid: int):
 
 # ---------- budget ----------
 
-def forecast_data():
-    this_year = date.today().year
-    with get_db() as db:
-        items = db.execute(
-            "SELECT i.*, r.name AS room_name FROM items i LEFT JOIN rooms r ON r.id=i.room_id"
-        ).fetchall()
-    years: dict[int, list] = {}
-    untracked = []
-    for i in items:
-        y = replacement_year(i)
-        if y is None:
-            untracked.append(i)
-        else:
-            years.setdefault(max(y, this_year), []).append((y, i))
-    forecast = [(y, rows, sum((i["replace_cost"] or 0) for _, i in rows))
-                for y, rows in sorted(years.items())]
-    ten_year = sum(t for y, _, t in forecast if y < this_year + 10)
-    return dict(forecast=forecast, untracked=untracked, ten_year=ten_year,
-                monthly=ten_year / 120, this_year=this_year)
-
-
-def nice_ceiling(v: float) -> float:
-    if v <= 0:
-        return 100.0
-    mag = 10 ** (len(str(int(v))) - 1)
-    for step in (1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
-        if step * mag >= v:
-            return step * mag
-    return 10 * mag
-
-
-LEDGER_SQL = """
-SELECT 'f' || id AS key, id, entry_date AS d, kind, amount, note, item_id, NULL AS task_id
-  FROM fund_entries
-UNION ALL
-SELECT 't' || l.id, l.id, l.done_on, 'expense', l.cost, 'Maintenance: ' || t.name, t.item_id, t.id
-  FROM task_logs l JOIN tasks t ON t.id = l.task_id WHERE l.cost IS NOT NULL AND l.cost > 0
-"""
-
-
-def balance_data(year: int):
-    y = str(year)
-    with get_db() as db:
-        rows = db.execute(f"SELECT * FROM ({LEDGER_SQL}) ORDER BY d, key").fetchall()
-        budget = db.execute("SELECT amount FROM budgets WHERE year=?", (year,)).fetchone()
-        years = {r[0] for r in db.execute("SELECT year FROM budgets")}
-        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
-    sign = lambda r: r["amount"] if r["kind"] == "allocation" else -r["amount"]
-    carry = sum(sign(r) for r in rows if r["d"][:4] < y)
-    ledger, run = [], carry
-    months = [{"m": m, "alloc": 0.0, "spent": 0.0} for m in range(1, 13)]
-    for r in rows:
-        years.add(int(r["d"][:4]))
-        if r["d"][:4] != y:
-            continue
-        run += sign(r)
-        ledger.append({**dict(r), "balance": run})
-        months[int(r["d"][5:7]) - 1]["alloc" if r["kind"] == "allocation" else "spent"] += r["amount"]
-    allocated = sum(m["alloc"] for m in months)
-    spent = sum(m["spent"] for m in months)
-    fund_total = sum(sign(r) for r in rows)
-    budget_amt = budget["amount"] if budget else None
-    peak = max([m["alloc"] for m in months] + [m["spent"] for m in months] + [0])
-    axis_max = nice_ceiling(peak)
-    years.add(date.today().year)
-    return dict(
-        year=year, years=sorted(years, reverse=True), budget=budget_amt,
-        allocated=allocated, spent=spent, carry=carry, year_end=run, fund_total=fund_total,
-        remaining=(budget_amt - spent) if budget_amt is not None else None,
-        unallocated=(budget_amt - allocated) if budget_amt is not None else None,
-        months=months, axis_max=axis_max, ticks=[axis_max * k / 4 for k in range(5)],
-        ledger=list(reversed(ledger)), items=items)
+balance_data = finance.balance_data      # kept importable from main (tests, older callers)
+forecast_data = finance.forecast_data
 
 
 @app.get("/budget")
-def budget_page(request: Request, view: str = "balance", year: int | None = None):
+def budget_page(request: Request, view: str = "balance", year: int | None = None, period: int = 5,
+                q: str = "", kind: str = "", category: str = "", sort: str = "new", edit: int | None = None):
     if view == "forecast":
-        return render(request, "budget.html", view=view, **forecast_data())
-    return render(request, "budget.html", view="balance",
-                  **balance_data(year or date.today().year))
+        return render(request, "forecast.html", **finance.forecast_data(period))
+    data = finance.balance_data(year or date.today().year, q, kind, category, sort)
+    fc = finance.forecast_data(5)
+    edit_entry = None
+    if edit:
+        with get_db() as db:
+            edit_entry = db.execute("SELECT * FROM fund_entries WHERE id=?", (edit,)).fetchone()
+    return render(request, "budget.html", view="balance", categories=finance.expense_categories(),
+                  fc_monthly=fc["monthly"], fc_total=fc["total"], edit_entry=edit_entry, **data)
 
 
 @app.post("/budget/year")
@@ -1083,19 +1260,58 @@ def budget_set(year: int = Form(...), amount: str = Form(None)):
         else:
             db.execute("INSERT INTO budgets (year, amount) VALUES (?,?) "
                        "ON CONFLICT(year) DO UPDATE SET amount=excluded.amount", (year, num(amount)))
-    return back(f"/budget?year={year}")
+    return back(toast_url(f"/budget?year={year}", f"{year} budget saved"))
+
+
+async def _save_receipt(upload, title: str, item_id: int | None) -> int | None:
+    if upload is None or not getattr(upload, "filename", ""):
+        return None
+    stored = f"{uuid.uuid4().hex}{Path(upload.filename).suffix.lower()[:10]}"
+    with (data_dir() / "uploads" / stored).open("wb") as fh:
+        fh.write(await upload.read())
+    with get_db() as db:
+        return db.execute("INSERT INTO documents (title, filename, stored_name, item_id, uploaded_at) "
+                          "VALUES (?,?,?,?,?)", (title, Path(upload.filename).name, stored, item_id,
+                                                 datetime.now().isoformat(timespec="seconds"))).lastrowid
+
+
+def _entry_fields(form):
+    kind = form.get("kind")
+    try:
+        amount = float(form.get("amount") or 0)
+    except ValueError:
+        amount = 0
+    if kind not in ("allocation", "expense") or amount <= 0:
+        raise HTTPException(400, "Enter an amount greater than zero.")
+    return dict(kind=kind, amount=amount, d=blank(form.get("entry_date")) or date.today().isoformat(),
+                note=blank(form.get("note")), item_id=num(form.get("item_id"), int),
+                category=blank(form.get("category")) if kind == "expense" else None)
 
 
 @app.post("/budget/entries")
-def budget_entry(kind: str = Form(...), amount: float = Form(...), entry_date: str = Form(None),
-                 note: str = Form(None), item_id: str = Form(None)):
-    if kind not in ("allocation", "expense") or amount <= 0:
-        raise HTTPException(400, "kind must be allocation/expense and amount > 0")
-    d = blank(entry_date) or date.today().isoformat()
+async def budget_entry(request: Request):
+    form = await request.form()
+    f = _entry_fields(form)
+    doc = await _save_receipt(form.get("receipt"), f"Receipt: {f['note'] or f['category'] or 'expense'} ({f['d']})",
+                              f["item_id"])
     with get_db() as db:
-        db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id) "
-                   "VALUES (?,?,?,?,?)", (d, kind, amount, blank(note), num(item_id, int)))
-    return back(f"/budget?year={d[:4]}")
+        db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id, category, document_id) "
+                   "VALUES (?,?,?,?,?,?,?)", (f["d"], f["kind"], f["amount"], f["note"], f["item_id"],
+                                              f["category"], doc))
+    label = "Funds added" if f["kind"] == "allocation" else "Expense recorded"
+    return back(toast_url(safe_next(form.get("next"), f"/budget?year={f['d'][:4]}"), f"{label}: ${f['amount']:,.2f}"))
+
+
+@app.post("/budget/entries/{entry_id}")
+async def budget_entry_update(request: Request, entry_id: int):
+    form = await request.form()
+    f = _entry_fields(form)
+    doc = await _save_receipt(form.get("receipt"), f"Receipt: {f['note'] or 'expense'} ({f['d']})", f["item_id"])
+    with get_db() as db:
+        db.execute("UPDATE fund_entries SET entry_date=?, kind=?, amount=?, note=?, item_id=?, category=?, "
+                   "document_id=COALESCE(?, document_id) WHERE id=?",
+                   (f["d"], f["kind"], f["amount"], f["note"], f["item_id"], f["category"], doc, entry_id))
+    return back(toast_url(f"/budget?year={f['d'][:4]}", "Entry updated"))
 
 
 @app.post("/budget/entries/{entry_id}/delete")
@@ -1103,7 +1319,20 @@ def budget_entry_delete(entry_id: int):
     with get_db() as db:
         r = db.execute("SELECT entry_date FROM fund_entries WHERE id=?", (entry_id,)).fetchone()
         db.execute("DELETE FROM fund_entries WHERE id=?", (entry_id,))
-    return back(f"/budget?year={r[0][:4]}" if r else "/budget")
+    return back(toast_url(f"/budget?year={r[0][:4]}" if r else "/budget", "Entry deleted"))
+
+
+@app.post("/settings/brand")
+def settings_brand(use: str = Form("0")):
+    set_setting("brand_v2", "1" if use == "1" else "0")
+    return back(toast_url("/settings#brand", "New Hearth logo turned on" if use == "1" else "Original logo restored"))
+
+
+@app.post("/settings/categories")
+def settings_categories(categories: str = Form("")):
+    cats = [c.strip() for c in categories.splitlines() if c.strip()]
+    set_setting("expense_categories", "\n".join(dict.fromkeys(cats)) or None)
+    return back(toast_url("/settings#finances", "Expense categories saved"))
 
 
 # ---------- settings ----------
@@ -1120,7 +1349,8 @@ def settings_page(request: Request, sent: str | None = None, g: str | None = Non
         last_sync=get_setting("gcal_last_sync"), last_error=get_setting("gcal_last_error"))
     return render(request, "settings.html", targets=len(notify.apprise_urls()), sent=sent,
                   lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()),
-                  google=google, g=g, gmsg=gmsg, imp=imp, imsg=imsg)
+                  google=google, g=g, gmsg=gmsg, imp=imp, imsg=imsg,
+                  expense_categories=finance.expense_categories())
 
 
 @app.post("/settings/test")

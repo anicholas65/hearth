@@ -1,21 +1,56 @@
-{% extends "base.html" %}{% from "_macros.html" import i, due as fmtdue, head, empty %}
-{% block title %}Maintenance{% endblock %}{% block content %}
-<div class="page-head"><div><h1>Tasks</h1><p>Recurring maintenance that keeps the house healthy.</p></div>
-<form method="post" action="/tasks/seed"><button class="ghost">{{ i('plus') }} Add common tasks</button></form></div>
-<section class="card accent" id="new">{{ head('New task', 'plus') }}<div class="card-b">
-<form class="form" method="post" action="/tasks">
-<label>Task<input name="name" required placeholder="Replace HVAC filter"></label>
-<label>Repeat every (days)<input name="interval_days" type="number" min="1" value="90" required></label>
-<label>First due<input name="next_due" type="date" value="{{ today }}"></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label>
-<label>Notes<input name="notes"></label><button>{{ i('plus') }} Add task</button></form></div></section>
-<section class="card">{{ head('All tasks', 'wrench', '<span class="badge acc">' ~ tasks|length ~ '</span>') }}<div class="card-b">
-{% if tasks %}<table class="tbl"><thead><tr><th>Task</th><th>Every</th><th>Next due</th><th>Mark done</th></tr></thead><tbody>
-{% for t in tasks %}<tr><td><a href="/tasks/{{ t.id }}"><b>{{ t.name|cap }}</b></a>{% if t.item_name %}<br><span class="badge">{{ i('box') }} {{ t.item_name }}</span>{% endif %}</td>
-<td class="muted">{{ t.interval_days }} days</td><td>{{ fmtdue(t.next_due, today) }}</td>
-<td><details><summary>{{ i('check') }} Done…</summary><form class="form pop" method="post" action="/tasks/{{ t.id }}/done">
-<label>Date<input type="date" name="done_on" value="{{ today }}"></label><label>Cost<input name="cost" type="number" step="0.01" placeholder="0.00"></label>
-<label>Who<select name="contractor_id"><option value="">DIY</option>{% for c in contractors %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
-<label>Notes<input name="notes"></label><button class="sm">{{ i('check') }} Log it</button></form></details></td></tr>{% endfor %}</tbody></table>
-{% else %}{% call empty('wrench', 'No tasks yet.') %}{% endcall %}{% endif %}</div></section>
+{% extends "base.html" %}{% from "_macros.html" import i, head, money, blank_state, repeat_picker %}
+{% block title %}Tasks{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Tasks</h1><p>Recurring maintenance and one-off jobs around the house.</p></div>
+<div class="actions">{% if n_all < 5 %}<form method="post" action="/tasks/seed" class="inline"><button class="ghost">{{ i('plus') }} Add common tasks</button></form>{% endif %}
+<button type="button" data-dialog="new-task">{{ i('plus') }} New task</button></div></div>
+
+<div class="toolbar">
+<nav class="filters" aria-label="Filter tasks">{% for k, label in filters %}<a href="/tasks?show={{ k }}&sort={{ sort }}" class="{{ 'on' if show == k }}"{% if show == k %} aria-current="true"{% endif %}>{{ label }}{% if counts.get(k) %} <span class="n">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</nav>
+{% if show != 'completed' %}<form method="get" action="/tasks" class="actions"><input type="hidden" name="show" value="{{ show }}">
+<label class="sr-only" for="sort">Sort by</label><select id="sort" name="sort" onchange="this.form.submit()">{% for k, label in sorts %}<option value="{{ k }}" {{ 'selected' if sort == k }}>Sort: {{ label }}</option>{% endfor %}</select>
+<noscript><button class="sm ghost">Sort</button></noscript></form>{% endif %}
+</div>
+
+{% if show == 'completed' %}
+{% if logs %}<section class="card"><div class="card-b" style="padding-top:12px"><div class="list">{% for l in logs %}
+<div class="row"><div class="dot ok">{{ i('check') }}</div>
+<div class="grow"><a href="/tasks/{{ l.task_id }}">{{ l.task_name|cap }}</a><small>{{ l.done_on|nicedate }} · {{ l.contractor_name or 'DIY' }}{% if l.item_name %} · {{ l.item_name }}{% endif %}{% if l.notes %} · {{ l.notes }}{% endif %}</small></div>
+{% if l.cost %}<b class="num">{{ money(l.cost) }}</b>{% endif %}
+<a class="btn ghost sm" href="/tasks/{{ l.task_id }}?log={{ l.id }}#log-details" aria-label="Edit details for {{ l.task_name }} on {{ l.done_on }}">{{ i('pencil') }}</a></div>{% endfor %}</div></div></section>
+{% else %}{% call blank_state('done', 'Nothing completed yet', 'When you mark a task done, it shows up here with its cost and who did it.') %}{% endcall %}{% endif %}
+
+{% elif rows %}<div role="list">{% for t in rows %}
+<div class="trow {{ 'overdue' if t.next_due < today }}" role="listitem">
+<form method="post" action="/tasks/{{ t.id }}/done" class="inline"><input type="hidden" name="next" value="/tasks?show={{ show }}&sort={{ sort }}">
+<button class="done-btn" title="Mark “{{ t.name }}” done" aria-label="Mark {{ t.name }} done">{{ i('check') }}</button></form>
+<div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name|cap }}</a>
+<div class="meta">
+<span class="{{ 'bad' if t.next_due < today else 'warn' if t.next_due == today }}">{{ i('alert' if t.next_due < today else 'calendar') }} {{ t.next_due|duein }}</span>
+<span>{{ i('repeat') }} {{ t.interval_days|repeat }}</span>
+{% if t.item_name %}<span>{{ i('box') }} {{ t.item_name }}{% if t.room_name %} · {{ t.room_name }}{% endif %}</span>{% endif %}
+{% if t.priority %}<span class="prio">{{ i('flag') }} High priority</span>{% endif %}
+</div></div>
+<a class="btn ghost sm hide-sm" href="/tasks/{{ t.id }}">Details</a>
+</div>{% endfor %}</div>
+{% else %}
+{% if n_all == 0 %}{% call blank_state('maintenance', 'Keep your home running smoothly', 'Start with 12 common maintenance tasks (filters, detectors, gutters) or create your own.') %}
+<form method="post" action="/tasks/seed" class="inline"><button>{{ i('plus') }} Add common tasks</button></form><button type="button" class="ghost" data-dialog="new-task">New task</button>{% endcall %}
+{% elif show == 'overdue' %}{% call blank_state('done', 'Nothing overdue', 'Every task is on schedule.') %}{% endcall %}
+{% elif show == 'today' %}{% call blank_state('calendar', 'Nothing due today', 'Enjoy the day. Upcoming tasks are one tap away.') %}<a class="btn ghost" href="/tasks?show=upcoming">See upcoming</a>{% endcall %}
+{% else %}{% call blank_state('calendar', 'Nothing in the next 30 days', 'All your tasks are further out.') %}<a class="btn ghost" href="/tasks?show=all">See all tasks</a>{% endcall %}{% endif %}
+{% endif %}
+
+<dialog class="panel" id="new-task" aria-labelledby="new-task-h"><form method="post" action="/tasks">
+<div class="dlg-h"><h2 id="new-task-h">New task</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">
+<label>Task<input name="name" required placeholder="Replace HVAC filter" autocomplete="off"></label>
+<label>Due<input name="next_due" type="date" value="{{ today }}" required></label>
+{{ repeat_picker(presets, 90) }}
+<label>Related item <span class="hint">optional</span><select name="item_id"><option value="">None</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label>
+<details class="more"><summary>More options</summary><div class="stack">
+<label class="chk"><input type="checkbox" name="priority" value="1"> High priority</label>
+<label>Notes<textarea name="notes" rows="3" placeholder="Filter size 16x25x1, stored in garage"></textarea></label></div></details>
+</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>{{ i('plus') }} Add task</button></div>
+</form></dialog>
 {% endblock %}

@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_macros.html" import i, blank_state %}
+{% block title %}{{ 'Not found' if code == 404 else 'Something went wrong' }}{% endblock %}{% block content %}
+<section class="card" role="alert"><div class="card-b" style="padding-top:24px">
+{% call blank_state('home', 'Not found' if code == 404 else 'That didn’t work', message) %}
+<a class="btn ghost" href="{{ back_href if back_href.startswith('/') or back_href.startswith('http') else '/' }}">{{ i('back') }} Go back</a><a class="btn" href="/">Home</a>{% endcall %}
+</div></section>
+{% endblock %}

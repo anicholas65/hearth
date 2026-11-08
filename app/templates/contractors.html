@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, blank_state %}
 {% block title %}Contractors{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Contractors</h1><p>Your trusted pros and what you've spent with them.</p></div></div>
 <section class="card accent" id="new">{{ head('Add contractor', 'plus') }}<div class="card-b"><form class="form" method="post" action="/contractors">
@@ -17,5 +17,5 @@
 <span class="muted" style="font-size:13px">{{ c.jobs }} job{{ 's' if c.jobs != 1 }} · <b style="color:var(--fg)">{{ money(c.spent) }}</b>{% if c.last %} · last {{ c.last }}{% endif %}</span>
 <form class="inline" method="post" action="/contractors/{{ c.id }}/delete" onsubmit="return confirm('Delete contractor?')"><button class="danger icon sm" title="Delete">{{ i('trash') }}</button></form></div>
 </div></div>{% endfor %}</div>
-{% else %}<section class="card"><div class="card-b">{% call empty('users', 'No contractors yet.') %}{% endcall %}</div></section>{% endif %}
+{% else %}{% call blank_state('people', 'Your trusted pros', 'Add the plumber, electrician and HVAC tech you rely on. Hearth tracks every job and what you spent.') %}<a class="btn" href="#new">{{ i('plus') }} Add contractor</a>{% endcall %}{% endif %}
 {% endblock %}

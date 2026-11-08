@@ -1,7 +1,7 @@
 """Dashboard data: what needs attention, a unified 'Up next' timeline, setup checklist, insights."""
 from datetime import date, timedelta
 
-from . import gcal, notify
+from . import gcal, notify, plan
 from .db import get_db, get_setting
 
 
@@ -26,11 +26,11 @@ def timeline(today: date | None = None, days: int = 14) -> list[dict]:
     with get_db() as db:
         for t in db.execute(
                 "SELECT t.*, i.name AS item_name FROM tasks t LEFT JOIN items i ON i.id=t.item_id "
-                "WHERE next_due <= ? ORDER BY next_due", (horizon,)):
+                "WHERE next_due <= ? AND t.completed_at IS NULL ORDER BY next_due", (horizon,)):
             d = date.fromisoformat(t["next_due"])
             out.append(dict(kind="task", id=t["id"], title=t["name"], date=d, time=None,
                             sub=(t["item_name"] + " · " if t["item_name"] else "")
-                            + f"Repeats every {t['interval_days']} days",
+                            + plan.repeat_label(t["interval_days"]),
                             href=f"/tasks/{t['id']}", overdue=d < today))
         for a in db.execute(
                 "SELECT a.*, c.name AS contractor_name FROM appointments a "
@@ -75,9 +75,9 @@ def setup_steps() -> list[dict]:
                             "AND life_years IS NOT NULL").fetchone()[0]
         budget = db.execute("SELECT 1 FROM budgets WHERE year=?", (year,)).fetchone()
     return [
-        dict(done=n_tasks > 0, title="Set up home maintenance", href="/tasks#new",
+        dict(done=n_tasks > 0, title="Set up home maintenance", href="/tasks#new-task",
              hint="Start from 12 common tasks: filters, detectors, gutters…"),
-        dict(done=n_items > 0, title="Add the things you own", href="/items#add",
+        dict(done=n_items > 0, title="Add the things you own", href="/items#new-item",
              hint="Appliances and systems; snap a photo of each."),
         dict(done=n_life > 0, title="Forecast replacements", href="/items",
              hint="Add a purchase date and expected life to an item."),
@@ -95,24 +95,37 @@ def show_setup(steps: list[dict]) -> bool:
 
 
 def insights(today: date | None = None) -> dict | None:
+    """Only facts we can back up: counts and sums, never a % from too little data."""
     today = today or date.today()
     since = (today - timedelta(days=90)).isoformat()
     year = str(today.year)
     with get_db() as db:
+        n_tasks = db.execute("SELECT COUNT(*) FROM tasks WHERE completed_at IS NULL").fetchone()[0]
+        overdue = db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL",
+                             (today.isoformat(),)).fetchone()[0]
         done90 = db.execute("SELECT COUNT(*) FROM task_logs WHERE done_on >= ?", (since,)).fetchone()[0]
+        any_logs = db.execute("SELECT COUNT(*) FROM task_logs").fetchone()[0]
         spend = db.execute(
             "SELECT COALESCE(SUM(cost),0) FROM task_logs WHERE substr(done_on,1,4)=?", (year,)).fetchone()[0]
         spend += db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM fund_entries WHERE kind='expense' "
             "AND substr(entry_date,1,4)=?", (year,)).fetchone()[0]
-        n_tasks = db.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-        on_track = db.execute("SELECT COUNT(*) FROM tasks WHERE next_due >= ?",
-                              (today.isoformat(),)).fetchone()[0]
+        any_money = db.execute("SELECT COUNT(*) FROM fund_entries").fetchone()[0] + any_logs
+        warr = db.execute("SELECT COUNT(*) FROM items WHERE warranty_until BETWEEN ? AND ?",
+                          (today.isoformat(), (today + timedelta(days=90)).isoformat())).fetchone()[0]
+        any_warr = db.execute("SELECT COUNT(*) FROM items WHERE warranty_until IS NOT NULL").fetchone()[0]
         items = db.execute("SELECT purchase_date, life_years, replace_cost FROM items "
                            "WHERE purchase_date IS NOT NULL AND life_years IS NOT NULL").fetchall()
     repl = sum((i["replace_cost"] or 0) for i in items
                if int(i["purchase_date"][:4]) + int(i["life_years"]) <= today.year + 2)
-    if not (done90 or spend or n_tasks or repl):
+    if not (n_tasks or any_logs or any_money or any_warr or items):
         return None
-    return dict(done90=done90, spend=spend, on_track_pct=round(on_track / n_tasks * 100) if n_tasks else None,
-                n_tasks=n_tasks, repl=repl, year=today.year)
+    # value None = no data to say anything; 0 = genuinely zero
+    return dict(year=today.year,
+                schedule=None if not n_tasks else ("No overdue tasks" if not overdue else
+                                                   f"{overdue} overdue of {n_tasks}"),
+                schedule_ok=n_tasks > 0 and not overdue,
+                done90=done90 if any_logs else None,
+                spend=spend if any_money else None,
+                warranties=warr if any_warr else None,
+                repl=repl if items else None)

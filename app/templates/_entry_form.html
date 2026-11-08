@@ -1,0 +1,9 @@
+{# Shared add/edit form for ledger entries. kind: 'allocation' | 'expense'; e: existing entry or none #}
+<input type="hidden" name="kind" value="{{ kind }}">
+<div class="form">
+<label>Amount<input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="{{ e.amount|n if e else '' }}" placeholder="0.00"></label>
+<label>Date<input name="entry_date" type="date" required value="{{ e.entry_date if e else (today if year|string == today[:4] else year ~ '-01-01') }}"></label></div>
+{% if kind == 'expense' %}<label>Category<select name="category"><option value="">Uncategorized</option>{% for c in categories %}<option {{ 'selected' if e and e.category == c }}>{{ c }}</option>{% endfor %}</select></label>{% endif %}
+<label>{{ 'What for' if kind == 'expense' else 'Note' }} <span class="hint">optional</span><input name="note" value="{{ (e.note or '') if e else '' }}" placeholder="{{ 'New sump pump' if kind == 'expense' else 'Monthly transfer' }}"></label>
+<label>Related item <span class="hint">optional</span><select name="item_id"><option value="">None</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if e and e.item_id == it.id }}>{{ it.name }}</option>{% endfor %}</select></label>
+{% if kind == 'expense' %}<label>Receipt <span class="hint">optional, saved to Documents</span><input type="file" name="receipt" accept="image/*,application/pdf"></label>{% endif %}

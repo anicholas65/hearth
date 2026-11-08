@@ -130,7 +130,8 @@ def _link(path: str) -> str:
 
 def task_body(t, item_name: str | None) -> dict:
     due = date.fromisoformat(t["next_due"])
-    desc = [f"Repeats every {t['interval_days']} days."]
+    from .plan import repeat_label
+    desc = [repeat_label(t["interval_days"]) + "."]
     if item_name:
         desc.append(f"Item: {item_name}")
     if t["notes"]:
@@ -198,7 +199,7 @@ def sync_task(task_id: int, client=None) -> bool:
         with get_db() as db:
             t = db.execute("SELECT t.*, i.name AS item_name FROM tasks t "
                            "LEFT JOIN items i ON i.id=t.item_id WHERE t.id=?", (task_id,)).fetchone()
-        if not t:
+        if not t or t["completed_at"]:
             return False
         eid = _upsert(client, t["gcal_event_id"], task_body(t, t["item_name"]))
         with get_db() as db:
@@ -255,7 +256,7 @@ def sync_all() -> tuple[int, int]:
         return 0, 0
     cutoff = (date.today() - timedelta(days=30)).isoformat()
     with get_db() as db:
-        tids = [r[0] for r in db.execute("SELECT id FROM tasks")]
+        tids = [r[0] for r in db.execute("SELECT id FROM tasks WHERE completed_at IS NULL")]
         aids = [r[0] for r in db.execute("SELECT id FROM appointments WHERE starts_at >= ?", (cutoff,))]
     ok = sum(sync_task(t, client) for t in tids) + sum(sync_appointment(a, client) for a in aids)
     return ok, len(tids) + len(aids) - ok

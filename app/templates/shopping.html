@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import i, head, empty, money %}
+{% extends "base.html" %}{% from "_macros.html" import i, head, empty, money, blank_state %}
 {% block title %}Shopping{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Shopping list</h1><p>{{ n_needed }} item{{ 's' if n_needed != 1 }} to get{% if est %} · about {{ money(est) }}{% endif %}</p></div>
 <div class="tabs" role="tablist" aria-label="Lists">{% for k, label in lists.items() %}<a href="/shopping?list={{ k }}" class="{{ 'on' if k == lst }}">{{ i('cart' if k == 'groceries' else 'wrench') }} {{ label }}{% if counts.get(k) %} <span class="badge acc">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</div></div>
@@ -23,7 +23,7 @@
 <section class="card">{{ head('To get', 'cart', '<a class="badge" href="/shopping/text?list=' ~ lst ~ '" target="_blank">Plain text</a>') }}<div class="card-b">
 {% if groups %}{% for cat, rows in groups.items() %}<div class="dayhead">{{ cat }} <span class="muted">· {{ rows|length }}</span></div>
 <div class="list">{% for r in rows %}{% include "_shop_row.html" %}{% endfor %}</div>{% endfor %}
-{% else %}{% call empty('cart', 'Nothing on the ' ~ lists[lst]|lower ~ ' list.' if not checked else 'All picked up!') %}{% endcall %}{% endif %}
+{% else %}{% call blank_state('shopping' if not checked else 'done', 'Nothing on the ' ~ lists[lst]|lower ~ ' list' if not checked else 'All picked up!', 'Type a few things above, separated by commas.' if not checked else 'Tap “Done shopping” to clear the cart.') %}{% endcall %}{% endif %}
 </div></section>
 
 <div>

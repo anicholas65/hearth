@@ -1,11 +1,21 @@
-<label>Name<input name="name" value="{{ item.name if item else '' }}" required placeholder="Refrigerator"></label>
-<label>Room<select name="room_id"><option value="">—</option>{% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if (item and item.room_id == r.id) or (not item and room == r.id) }}>{{ r.name }}</option>{% endfor %}</select></label>
-<label>Brand<input name="brand" value="{{ (item.brand or '') if item else '' }}"></label>
-<label>Model<input name="model" value="{{ (item.model or '') if item else '' }}"></label>
-<label>Serial #<input name="serial" value="{{ (item.serial or '') if item else '' }}"></label>
-<label>Purchased<input name="purchase_date" type="date" value="{{ (item.purchase_date or '') if item else '' }}"></label>
-<label>Price<input name="price" type="number" step="0.01" value="{{ item.price|n if item else '' }}"></label>
-<label>Warranty until<input name="warranty_until" type="date" value="{{ (item.warranty_until or '') if item else '' }}"></label>
-<label>Expected life (yrs)<input name="life_years" type="number" min="1" value="{{ (item.life_years or '') if item else '' }}"></label>
-<label>Replacement cost<input name="replace_cost" type="number" step="0.01" value="{{ item.replace_cost|n if item else '' }}"></label>
-<label class="wide">Notes<textarea name="notes" rows="2">{{ (item.notes or '') if item else '' }}</textarea></label>
+{# Guided item form: essentials first, everything else under "More details". Used for create and edit. #}
+{% set it = item if item else none %}
+<label>Name<input name="name" value="{{ it.name if it else '' }}" required placeholder="Refrigerator" autocomplete="off"></label>
+<label>Room<select name="room_id" onchange="this.closest('form').querySelector('.newroom').hidden = this.value !== '__new'">
+<option value="">No room</option>{% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if (it and it.room_id == r.id) or (not it and room == r.id) }}>{{ r.name }}</option>{% endfor %}
+<option value="__new">+ New room…</option></select></label>
+<label class="newroom" hidden>New room name<input name="new_room" placeholder="Laundry room"></label>
+{% if not it %}<label>Photo <span class="hint">optional — snap the item or its label</span><input type="file" name="photo" accept="image/*" capture="environment"></label>{% endif %}
+<details class="more" {{ 'open' if it }}><summary>{{ 'Details' if it else 'More details' }} <span class="hint">brand, model, warranty, lifespan…</span></summary>
+<div class="form">
+<label>Category<select name="category"><option value="">—</option>{% for c in categories %}<option {{ 'selected' if it and it.category == c }}>{{ c }}</option>{% endfor %}</select></label>
+<label>Brand<input name="brand" value="{{ (it.brand or '') if it else '' }}"></label>
+<label>Model<input name="model" value="{{ (it.model or '') if it else '' }}"></label>
+<label>Serial number<input name="serial" value="{{ (it.serial or '') if it else '' }}"></label>
+<label>Purchase date<input name="purchase_date" type="date" value="{{ (it.purchase_date or '') if it else '' }}"></label>
+<label>Purchase price<input name="price" type="number" step="0.01" min="0" inputmode="decimal" value="{{ it.price|n if it else '' }}"></label>
+<label>Warranty ends<input name="warranty_until" type="date" value="{{ (it.warranty_until or '') if it else '' }}"></label>
+<label>Expected life <span class="hint">years</span><input name="life_years" type="number" min="1" inputmode="numeric" value="{{ (it.life_years or '') if it else '' }}"></label>
+<label>Replacement cost <span class="hint">estimate</span><input name="replace_cost" type="number" step="0.01" min="0" inputmode="decimal" value="{{ it.replace_cost|n if it else '' }}"></label>
+<label class="wide">Notes<textarea name="notes" rows="2">{{ (it.notes or '') if it else '' }}</textarea></label>
+</div></details>

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import i, empty %}
+{% extends "base.html" %}{% from "_macros.html" import i, empty, blank_state %}
 {% block title %}Photos{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Photos</h1><p>Capture anything around the house now, and file it to an item or room later.</p></div>
 <div class="actions">
@@ -18,7 +18,7 @@
 <div class="body"><span class="cap">{{ p.caption or p.created_at[:16].replace('T', ' ') }}</span>
 <div class="meta">{% if p.item_name %}<span class="badge acc">{{ i('box') }} {{ p.item_name }}</span>{% elif p.room_name %}<span class="badge acc">{{ i('door') }} {{ p.room_name }}</span>{% else %}<span class="badge">{{ i('sliders') }} Tap to file</span>{% endif %}</div></div></a>
 {% endfor %}</div>
-{% else %}<section class="card"><div class="card-b">{% call empty('camera', 'No photos here yet. Tap “Take photo” to capture one.') %}{% endcall %}</div></section>{% endif %}
+{% else %}{% call blank_state('photos', 'No photos here yet', 'Capture anything around the house now: an appliance label, a leak, a receipt. Sort it later.') %}{% endcall %}{% endif %}
 
 <dialog class="cam" id="cam"><video id="cam-video" autoplay playsinline muted></video>
 <div class="card-b actions" style="justify-content:space-between"><input id="cam-caption" placeholder="Caption (optional)" style="flex:1;min-width:160px">

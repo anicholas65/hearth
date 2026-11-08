@@ -1,105 +1,120 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, blank_state, tip %}
 {% block title %}Budget{% endblock %}{% block content %}
 {% macro signed(v) -%}{% if v is none %}<span class="muted">—</span>{% elif v < 0 %}−${{ "{:,.0f}".format(-v) }}{% else %}${{ "{:,.0f}".format(v) }}{% endif %}{%- endmacro %}
-<div class="page-head"><div><h1>Budget</h1><p>{{ 'Home fund: what you planned, set aside, spent, and what is left.' if view == 'balance' else "What's wearing out, when, and what to set aside." }}</p></div></div>
+<div class="page-head"><div><h1>Budget</h1><p>Your home fund for maintenance, repairs and replacements.</p></div>
+<div class="actions"><label class="sr-only" for="yr">Year</label>
+<select id="yr" onchange="location.href='/budget?year='+this.value" style="width:auto;min-height:var(--touch)">{% for y in years %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select>
+<button type="button" class="ghost" data-dialog="new-funds">{{ i('banknote') }} Add funds</button>
+<button type="button" data-dialog="new-expense">{{ i('plus') }} Record expense</button></div></div>
 
-{% if view == 'balance' %}
-<div class="year-pick" style="margin-bottom:14px">{% for y in years %}<a class="badge {{ 'acc' if y == year }}" href="/budget?year={{ y }}">{{ y }}</a>{% endfor %}</div>
-
-<div class="stats">
-<div class="stat"><div class="ic">{{ i('calendar') }}</div><div><b>{{ money(budget) if budget is not none else '—' }}</b><span>{{ year }} budget</span></div></div>
-<div class="stat"><div class="ic" style="color:var(--s1)">{{ i('plus') }}</div><div><b>{{ money(allocated) if allocated else '$0' }}</b><span>Allocated in {{ year }}</span></div></div>
-<div class="stat"><div class="ic" style="color:var(--s2)">{{ i('wallet') }}</div><div><b>{{ money(spent) if spent else '$0' }}</b><span>Spent in {{ year }}</span></div></div>
-<div class="stat"><div class="ic">{{ i('trend') }}</div><div><b class="{{ 'neg' if remaining is not none and remaining < 0 }}">{{ signed(remaining) }}</b><span>Budget remaining</span></div></div>
-<div class="stat hl"><div class="ic">{{ i('shield') }}</div><div><b class="{{ 'neg' if fund_total < 0 }}">{{ signed(fund_total) }}</b><span>Fund balance (today)</span></div></div>
+<div class="facts">
+<div><span>Annual home budget {{ tip('Your spending plan for the house this year. It is a target, not money you have.') }}</span><b>{{ money(budget) if budget else '—' }}</b><small>{% if budget %}for {{ year }}{% else %}<a href="#budget">Set a budget</a>{% endif %}</small></div>
+<div><span>Funds allocated {{ tip('Money you actually set aside into the home fund in ' ~ year ~ '.') }}</span><b>{{ money(allocated) if allocated else '$0' }}</b><small>{{ ('avg ' ~ money(avg_monthly_alloc) ~ '/month') if allocated else 'nothing set aside yet' }}</small></div>
+<div><span>Amount spent {{ tip('Expenses in ' ~ year ~ ', including costs logged when completing maintenance.') }}</span><b>{{ money(spent) if spent else '$0' }}</b><small>{{ by_cat|length }} categor{{ 'y' if by_cat|length == 1 else 'ies' }}</small></div>
+<div><span>Budget remaining {{ tip('Annual budget minus amount spent.') }}</span><b class="{{ 'bad' if remaining is not none and remaining < 0 }}">{{ signed(remaining) }}</b><small>{% if remaining is none %}no budget set{% elif remaining < 0 %}over budget{% else %}left to spend{% endif %}</small></div>
+<div><span>Available fund balance {{ tip('Everything ever allocated minus everything ever spent. This is the money available right now.') }}</span><b class="{{ 'bad' if fund_total < 0 }}">{{ signed(fund_total) }}</b><small>all years</small></div>
 </div>
 
 <div class="grid">
-<section class="card accent" id="budget">{{ head(year ~ ' budget progress', 'calendar') }}<div class="card-b">
-{% if budget %}
-{% set pa = (allocated / budget * 100) if budget else 0 %}{% set ps = (spent / budget * 100) if budget else 0 %}
-<div class="meter"><div class="lbl"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--s1);margin-right:6px"></i>Allocated</span><span><b>{{ money(allocated) if allocated else '$0' }}</b> of {{ money(budget) }} · {{ pa|round|int }}%</span></div>
-<div class="track"><div class="fill {{ 'over' if pa > 100 }}" style="width:{{ [pa,100]|min }}%;background:var(--s1)"></div></div></div>
-<div class="meter"><div class="lbl"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--s2);margin-right:6px"></i>Spent</span><span><b>{{ money(spent) if spent else '$0' }}</b> of {{ money(budget) }} · {{ ps|round|int }}%</span></div>
-<div class="track"><div class="fill {{ 'over' if ps > 100 }}" style="width:{{ [ps,100]|min }}%;background:var(--s2)"></div></div></div>
-<p class="muted" style="font-size:13px;margin:6px 0 0">{% if remaining < 0 %}<span class="badge bad">{{ i('alert') }} Over budget by {{ money(-remaining) }}</span>{% else %}{{ money(remaining) if remaining else '$0' }} left to spend{% if unallocated and unallocated > 0 %} · {{ money(unallocated) }} not yet allocated{% endif %}.{% endif %}</p>
-{% else %}{% call empty('calendar', 'No budget set for ' ~ year ~ '. Set one to track progress.') %}{% endcall %}{% endif %}
-<form class="form" method="post" action="/budget/year" style="margin-top:12px"><input type="hidden" name="year" value="{{ year }}">
-<label>{{ year }} budget<input name="amount" type="number" step="0.01" min="0" value="{{ budget|n if budget is not none else '' }}" placeholder="e.g. 6000"></label><button class="ghost">Save budget</button></form>
+<section class="card" id="budget">{{ head(year ~ ' progress', 'calendar') }}<div class="card-b">
+{% if budget %}{% set pa = allocated / budget * 100 %}{% set ps = spent / budget * 100 %}
+<div class="meter"><div class="lbl"><span>Allocated</span><span><b class="num">{{ money(allocated) if allocated else '$0' }}</b> of {{ money(budget) }} · {{ pa|round|int }}%</span></div>
+<div class="track" role="progressbar" aria-label="Allocated" aria-valuenow="{{ pa|round|int }}" aria-valuemin="0" aria-valuemax="100"><div class="fill {{ 'over' if pa > 100 }}" style="width:{{ [pa,100]|min }}%;background:var(--s1)"></div></div></div>
+<div class="meter"><div class="lbl"><span>Spent</span><span><b class="num">{{ money(spent) if spent else '$0' }}</b> of {{ money(budget) }} · {{ ps|round|int }}%{% if ps > 100 %} <span class="badge bad">{{ i('alert') }} over</span>{% endif %}</span></div>
+<div class="track" role="progressbar" aria-label="Spent" aria-valuenow="{{ ps|round|int }}" aria-valuemin="0" aria-valuemax="100"><div class="fill {{ 'over' if ps > 100 }}" style="width:{{ [ps,100]|min }}%;background:var(--s2)"></div></div></div>
+{% else %}<p class="muted">Set a yearly budget to see how allocations and spending track against it.</p>{% endif %}
+<form class="form" method="post" action="/budget/year" style="margin-top:8px"><input type="hidden" name="year" value="{{ year }}">
+<label>{{ year }} budget<input name="amount" type="number" step="0.01" min="0" inputmode="decimal" value="{{ budget|n if budget is not none else '' }}" placeholder="e.g. 6000"></label><button class="ghost">Save</button></form>
 </div></section>
 
-<section class="card" id="ledger">{{ head('Add to the ledger', 'plus') }}<div class="card-b">
-<form class="form" method="post" action="/budget/entries">
-<label>Type<select name="kind"><option value="allocation">Allocate (money in)</option><option value="expense">Expense (money out)</option></select></label>
-<label>Amount<input name="amount" type="number" step="0.01" min="0.01" required></label>
-<label>Date<input name="entry_date" type="date" value="{{ today if year|string == today[:4] else year ~ '-01-01' }}"></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label>
-<label class="wide">Note<input name="note" placeholder="Monthly transfer · New water heater"></label>
-<div class="wide"><button>{{ i('plus') }} Add entry</button></div></form>
-<p class="muted" style="font-size:13px;margin:10px 0 0">Costs logged when you complete maintenance tasks count as expenses automatically.</p></div></section>
+<section class="card">{{ head('Replacement planning', 'chart', '<a class="badge" href="/budget?view=forecast">Forecast</a>') }}<div class="card-b">
+{% if fc_total %}<p style="margin:0 0 10px">About <b>{{ money(fc_total) }}</b> of replacements are expected in the next 5 years. To cover what your fund doesn't, set aside about <b>{{ money(fc_monthly) if fc_monthly else '$0' }}/month</b>.</p>
+{% if year|string == today[:4] %}<p class="muted small" style="margin:0">This year you've allocated about {{ money(avg_monthly_alloc) if avg_monthly_alloc else '$0' }}/month.
+{% if fc_monthly and avg_monthly_alloc >= fc_monthly %}<span class="badge ok">{{ i('check') }} On track</span>{% elif fc_monthly %}<span class="badge warn">{{ i('alert') }} Below plan</span>{% endif %}</p>{% endif %}
+{% else %}<p class="muted" style="margin:0">Add purchase dates, expected lifespans and replacement costs to your items, and Hearth will suggest how much to set aside each month.</p>{% endif %}
+</div></section>
 </div>
 
-<section class="card">{{ head('Allocated vs spent by month', 'trend') }}<div class="card-b">
+<section class="card">{{ head('Allocated vs spent by month', 'chart') }}<div class="card-b">
+{% if has_activity %}
 <div class="legend" style="margin-bottom:8px"><span><i style="background:var(--s1)"></i>Allocated</span><span><i style="background:var(--s2)"></i>Spent</span></div>
 {% set W, H, L, T, B = 720, 220, 52, 8, 22 %}{% set pw = W - L %}{% set ph = H - T - B %}{% set band = pw / 12 %}{% set bw = [band * 0.32, 22]|min %}
-<div class="chart" id="chart"><svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Allocated versus spent per month in {{ year }}">
+{% set mnames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+<div class="chart" id="chart"><svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Allocated versus spent per month in {{ year }}. Table view in the ledger below.">
 <g class="grid">{% for t in ticks %}{% set y = T + ph - (t / axis_max * ph) %}<line x1="{{ L }}" x2="{{ W }}" y1="{{ y }}" y2="{{ y }}"/><text x="{{ L - 8 }}" y="{{ y + 4 }}" text-anchor="end">${{ "{:,.0f}".format(t) if t < 10000 else "{:,.0f}k".format(t / 1000) }}</text>{% endfor %}</g>
 {% for m in months %}{% set cx = L + band * loop.index0 + band / 2 %}
-<g class="m" data-m="{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][loop.index0] }}" data-a="{{ m.alloc }}" data-s="{{ m.spent }}" data-x="{{ cx }}">
+<g class="m" tabindex="0" role="img" aria-label="{{ mnames[loop.index0] }}: allocated ${{ '%.0f'|format(m.alloc) }}, spent ${{ '%.0f'|format(m.spent) }}" data-m="{{ mnames[loop.index0] }}" data-a="{{ m.alloc }}" data-s="{{ m.spent }}" data-x="{{ cx }}">
 <rect class="hit" x="{{ cx - band / 2 }}" y="{{ T }}" width="{{ band }}" height="{{ ph }}" rx="6"/>
 {% for v, col, x0 in [(m.alloc, 'var(--s1)', cx - bw - 1), (m.spent, 'var(--s2)', cx + 1)] %}{% if v > 0 %}
 {% set h = [v / axis_max * ph, 2]|max %}{% set y0 = T + ph - h %}{% set r = [4, h, bw / 2]|min %}
 <path fill="{{ col }}" d="M{{ x0 }},{{ T + ph }}V{{ y0 + r }}Q{{ x0 }},{{ y0 }} {{ x0 + r }},{{ y0 }}H{{ x0 + bw - r }}Q{{ x0 + bw }},{{ y0 }} {{ x0 + bw }},{{ y0 + r }}V{{ T + ph }}Z"/>{% endif %}{% endfor %}
 </g>{% endfor %}
 <line x1="{{ L }}" x2="{{ W }}" y1="{{ T + ph }}" y2="{{ T + ph }}" stroke="var(--line-strong)"/>
-<g class="xl">{% for n in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}<text x="{{ L + band * loop.index0 + band / 2 }}" y="{{ H - 4 }}" text-anchor="middle">{{ n }}</text>{% endfor %}</g>
-</svg><div class="tip" id="tip"></div></div>
+<g class="xl">{% for n in mnames %}<text x="{{ L + band * loop.index0 + band / 2 }}" y="{{ H - 4 }}" text-anchor="middle">{{ n }}</text>{% endfor %}</g>
+</svg><div class="tip" id="tip" aria-hidden="true"></div></div>
+{% else %}{% call blank_state('budget', 'No activity in ' ~ year, 'Add funds to your home fund or record an expense, and the monthly picture appears here.') %}
+<button type="button" data-dialog="new-funds" class="ghost">{{ i('banknote') }} Add funds</button><button type="button" data-dialog="new-expense">Record expense</button>{% endcall %}{% endif %}
 </div></section>
 
-<section class="card">{{ head('Ledger ' ~ year, 'file', '<span class="badge acc">' ~ ledger|length ~ '</span>') }}<div class="card-b">
-{% if ledger or carry %}<table class="tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Allocated</th><th class="num">Spent</th><th class="num">Balance</th><th></th></tr></thead><tbody>
-{% for e in ledger %}<tr><td class="muted" style="white-space:nowrap">{{ e.d }}</td>
-<td>{% if e.task_id %}<a href="/tasks/{{ e.task_id }}">{{ e.note }}</a>{% else %}{{ e.note or ('Allocation' if e.kind == 'allocation' else 'Expense') }}{% endif %}
-{% if e.item_id %}{% for it in items if it.id == e.item_id %} <a class="badge" href="/items/{{ it.id }}">{{ i('box') }} {{ it.name }}</a>{% endfor %}{% endif %}</td>
-<td class="num">{% if e.kind == 'allocation' %}<span class="amt-in">+{{ money(e.amount) }}</span>{% endif %}</td>
-<td class="num">{% if e.kind == 'expense' %}<span class="amt-out">−{{ money(e.amount) }}</span>{% endif %}</td>
-<td class="num {{ 'bad' if e.balance < 0 }}">{{ signed(e.balance) }}</td>
-<td>{% if not e.task_id %}<form class="inline" method="post" action="/budget/entries/{{ e.id }}/delete" onsubmit="return confirm('Delete entry?')"><button class="danger icon sm" title="Delete">{{ i('trash') }}</button></form>{% endif %}</td></tr>{% endfor %}
-</tbody><tfoot><tr><td colspan="2">Carried in from before {{ year }}</td><td class="num"></td><td class="num"></td><td class="num">{{ signed(carry) }}</td><td></td></tr></tfoot></table>
-{% else %}{% call empty('file', 'No entries in ' ~ year ~ '. Allocate money to your home fund to get started.') %}{% endcall %}{% endif %}
+{% if by_cat or per_year|length > 1 %}<div class="grid">
+{% if by_cat %}<section class="card">{{ head('Spending by category', 'tag') }}<div class="card-b">{% set top = by_cat[0][1] %}
+{% for c, v in by_cat %}<div class="hbar"><span>{{ c }}</span><span class="t" aria-hidden="true"><i style="width:{{ (v / top * 100)|round(1) }}%"></i></span><b>{{ money(v) }}</b></div>{% endfor %}</div></section>{% endif %}
+{% if per_year|length > 1 %}<section class="card">{{ head('Year by year', 'calendar') }}<div class="card-b"><table class="tbl rtable"><thead><tr><th>Year</th><th class="num">Allocated</th><th class="num">Spent</th><th class="num">Net</th></tr></thead><tbody>
+{% for yy, v in per_year %}<tr><td class="lead"><a href="/budget?year={{ yy }}">{{ yy }}</a></td><td class="num" data-label="Allocated">{{ money(v.alloc) if v.alloc else '$0' }}</td><td class="num" data-label="Spent">{{ money(v.spent) if v.spent else '$0' }}</td><td class="num" data-label="Net">{{ signed(v.alloc - v.spent) }}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+</div>{% endif %}
+
+<section class="card" id="ledger">{{ head('Ledger · ' ~ year, 'file', '<span class="badge">' ~ ledger|length ~ (' of ' ~ ledger_total if ledger|length != ledger_total else '') ~ '</span>') }}<div class="card-b">
+{% if ledger_total %}
+<form class="toolbar" method="get" action="/budget" role="search" aria-label="Filter ledger"><input type="hidden" name="year" value="{{ year }}">
+<div class="actions" style="flex:1"><label class="sr-only" for="lq">Search ledger</label><input id="lq" name="q" value="{{ filt.q }}" placeholder="Search notes or items" style="max-width:260px;min-height:38px">
+<label class="sr-only" for="lk">Type</label><select id="lk" name="kind" onchange="this.form.submit()"><option value="">In & out</option><option value="allocation" {{ 'selected' if filt.kind == 'allocation' }}>Funds added</option><option value="expense" {{ 'selected' if filt.kind == 'expense' }}>Expenses</option></select>
+<label class="sr-only" for="lc">Category</label><select id="lc" name="category" onchange="this.form.submit()"><option value="">All categories</option>{% for c, v in by_cat %}<option {{ 'selected' if filt.category == c }}>{{ c }}</option>{% endfor %}</select>
+<label class="sr-only" for="ls">Sort</label><select id="ls" name="sort" onchange="this.form.submit()"><option value="new">Newest first</option><option value="old" {{ 'selected' if filt.sort == 'old' }}>Oldest first</option><option value="amount" {{ 'selected' if filt.sort == 'amount' }}>Largest first</option></select>
+<button class="ghost sm">{{ i('search') }} Filter</button></div></form>
+{% if ledger %}<table class="tbl rtable"><thead><tr><th>Date</th><th>Description</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+{% for e in ledger %}<tr><td class="lead">{{ e.d|nicedate }}</td>
+<td class="nolabel">{% if e.task_id %}<a href="/tasks/{{ e.task_id }}">{{ e.note }}</a>{% else %}{{ e.note or ('Funds added' if e.kind == 'allocation' else 'Expense') }}{% endif %}
+{% if e.kind == 'expense' %} <span class="badge">{{ e.category or 'Uncategorized' }}</span>{% endif %}{% if e.item_id %} <a class="badge" href="/items/{{ e.item_id }}">{{ e.item_name }}</a>{% endif %}{% if e.document_id %} <a class="badge acc" href="/documents/{{ e.document_id }}/file" target="_blank">{{ i('receipt') }} Receipt</a>{% endif %}</td>
+<td class="num" data-label="In">{% if e.kind == 'allocation' %}<span class="amt-in">+{{ money(e.amount) }}</span>{% endif %}</td>
+<td class="num" data-label="Out">{% if e.kind == 'expense' %}<span class="amt-out">−{{ money(e.amount) }}</span>{% endif %}</td>
+<td class="num {{ 'bad' if e.balance < 0 }}" data-label="Balance">{{ signed(e.balance) }}</td>
+<td class="act">{% if e.task_id %}<a class="btn ghost sm" href="/tasks/{{ e.task_id }}" aria-label="Open maintenance task">{{ i('wrench') }}</a>{% else %}<a class="btn ghost sm" href="/budget?year={{ year }}&edit={{ e.id }}#edit-entry" aria-label="Edit entry">{{ i('pencil') }}</a>{% endif %}</td></tr>{% endfor %}
+</tbody><tfoot><tr><td colspan="4">Carried in from before {{ year }}</td><td class="num">{{ signed(carry) }}</td><td></td></tr></tfoot></table>
+{% else %}<p class="muted">No entries match. <a href="/budget?year={{ year }}">Clear filters</a></p>{% endif %}
+{% else %}{% call empty('file', 'No entries in ' ~ year ~ '.') %}{% endcall %}{% endif %}
+<p class="muted small" style="margin:12px 0 0">Maintenance costs come from completed tasks automatically (edit them on the task), so they're never counted twice.</p>
 </div></section>
+
+{% for k, title, did in [('allocation', 'Add funds', 'new-funds'), ('expense', 'Record expense', 'new-expense')] %}
+<dialog class="panel" id="{{ did }}" aria-labelledby="{{ did }}-h"><form method="post" action="/budget/entries" enctype="multipart/form-data">
+<div class="dlg-h"><h2 id="{{ did }}-h">{{ title }}</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% if k == 'allocation' %}<p class="muted" style="margin:0">Money you're setting aside for the house. It raises your available fund balance.</p>{% endif %}
+{% set kind, e = k, none %}{% include "_entry_form.html" %}</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>{{ title }}</button></div></form></dialog>{% endfor %}
+
+{% if edit_entry %}<dialog class="panel" id="edit-entry" aria-labelledby="edit-entry-h"><form method="post" action="/budget/entries/{{ edit_entry.id }}" enctype="multipart/form-data">
+<div class="dlg-h"><h2 id="edit-entry-h">Edit {{ 'funds' if edit_entry.kind == 'allocation' else 'expense' }}</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% set kind, e = edit_entry.kind, edit_entry %}{% include "_entry_form.html" %}</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-entry" class="danger">{{ i('trash') }} Delete</button><span class="actions"><button type="button" class="ghost" data-close>Cancel</button><button>Save</button></span></div></form></dialog>
+<form id="del-entry" method="post" action="/budget/entries/{{ edit_entry.id }}/delete" onsubmit="return confirm('Delete this entry?')" hidden></form>{% endif %}
+
 <script>
 (() => {
   const chart = document.getElementById('chart'), tip = document.getElementById('tip');
   if (!chart) return;
   const fmt = v => '$' + Math.round(+v).toLocaleString();
-  const svg = chart.querySelector('svg');
-  chart.querySelectorAll('.m').forEach(g => {
-    const show = () => {
-      chart.querySelectorAll('.m').forEach(o => o.classList.toggle('dim', o !== g));
-      tip.innerHTML = `<b>${g.dataset.m} {{ year }}</b><div><span><i style="background:var(--s1)"></i>Allocated</span><span>${fmt(g.dataset.a)}</span></div><div><span><i style="background:var(--s2)"></i>Spent</span><span>${fmt(g.dataset.s)}</span></div>`;
-      const k = svg.getBoundingClientRect().width / {{ W }};
-      tip.style.left = Math.min(Math.max(g.dataset.x * k, 80), chart.clientWidth - 80) + 'px';
-      tip.style.top = '6px'; tip.style.display = 'block';
-    };
-    g.addEventListener('mouseenter', show); g.addEventListener('click', show);
-  });
-  chart.addEventListener('mouseleave', () => { tip.style.display = 'none'; chart.querySelectorAll('.m').forEach(o => o.classList.remove('dim')); });
+  const svg = chart.querySelector('svg'), groups = chart.querySelectorAll('.m');
+  const show = g => {
+    groups.forEach(o => o.classList.toggle('dim', o !== g));
+    tip.innerHTML = `<b>${g.dataset.m} {{ year }}</b><div><span><i style="background:var(--s1)"></i>Allocated</span><span>${fmt(g.dataset.a)}</span></div><div><span><i style="background:var(--s2)"></i>Spent</span><span>${fmt(g.dataset.s)}</span></div>`;
+    const k = svg.getBoundingClientRect().width / {{ 720 }};
+    tip.style.left = Math.min(Math.max(g.dataset.x * k, 90), chart.clientWidth - 90) + 'px';
+    tip.style.top = '4px'; tip.style.display = 'block';
+  };
+  const hide = () => { tip.style.display = 'none'; groups.forEach(o => o.classList.remove('dim')); };
+  groups.forEach(g => { g.addEventListener('mouseenter', () => show(g)); g.addEventListener('focus', () => show(g)); g.addEventListener('click', () => show(g)); g.addEventListener('blur', hide); });
+  chart.addEventListener('mouseleave', hide);
 })();
 </script>
-
-{% else %}
-<div class="stats">
-<div class="stat"><div class="ic">{{ i('trend') }}</div><div><b>{{ money(ten_year) }}</b><span>Replacements, next 10 years</span></div></div>
-<div class="stat"><div class="ic">{{ i('wallet') }}</div><div><b>{{ money(monthly) }}</b><span>Suggested monthly allocation</span></div></div>
-<div class="stat"><div class="ic">{{ i('box') }}</div><div><b>{{ untracked|length }}</b><span>Items missing lifespan</span></div></div></div>
-<section class="card accent">{{ head('Forecast by year', 'calendar') }}<div class="card-b">
-{% if forecast %}{% set peak = forecast|map(attribute=2)|max or 1 %}
-{% for y, rows, total in forecast %}<div class="bar-row"><span class="yr {{ 'bad' if y == this_year }}">{{ y }}</span>
-<div><div>{% for orig, it in rows %}<a href="/items/{{ it.id }}">{{ it.name }}</a>{% if orig < this_year %} <span class="badge bad">overdue since {{ orig }}</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</div>
-<div class="bar-track"><div class="bar-fill" style="width:{{ (total / peak * 100)|round(1) if total else 0 }}%"></div></div></div>
-<span class="amt">{{ money(total) }}</span></div>{% endfor %}
-{% else %}{% call empty('trend', 'No forecast yet. Give items a purchase date and expected life.') %}{% endcall %}{% endif %}</div></section>
-{% if untracked %}<section class="card">{{ head('Missing lifespan data', 'alert') }}<div class="card-b"><div class="actions">{% for it in untracked %}<a class="badge" href="/items/{{ it.id }}">{{ it.name }}</a>{% endfor %}</div></div></section>{% endif %}
-{% endif %}
 {% endblock %}

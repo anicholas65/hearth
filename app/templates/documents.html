@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import i, head, empty %}
+{% extends "base.html" %}{% from "_macros.html" import i, head, empty, blank_state %}
 {% block title %}Documents{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Documents</h1><p>Receipts, manuals, warranties and policies, all in one place.</p></div></div>
 <section class="card accent" id="new">{{ head('Upload', 'upload') }}<div class="card-b"><form class="form" method="post" action="/documents" enctype="multipart/form-data">
@@ -13,5 +13,5 @@
 <div class="meta">{% if d.item_id %}<a class="badge acc" href="/items/{{ d.item_id }}">{{ i('box') }} {{ d.item_name }}</a>{% else %}<span class="badge">{{ d.uploaded_at[:10] }}</span>{% endif %}
 <form class="inline" method="post" action="/documents/{{ d.id }}/delete" onsubmit="return confirm('Delete document?')"><button class="danger icon sm" title="Delete">{{ i('trash') }}</button></form></div></div></div>
 {% endfor %}</div>
-{% else %}<section class="card"><div class="card-b">{% call empty('file', 'No documents yet.') %}{% endcall %}</div></section>{% endif %}
+{% else %}{% call blank_state('documents', 'Keep the paperwork in one place', 'Receipts, manuals, warranties and policies, linked to the things they belong to.') %}<a class="btn" href="#new">{{ i('upload') }} Upload a document</a>{% endcall %}{% endif %}
 {% endblock %}

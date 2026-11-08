@@ -6,7 +6,7 @@
 <div class="swatches" style="margin-bottom:16px">{% for key, (label, cols) in themes.items() %}
 <label class="swatch"><input type="radio" name="theme" value="{{ key }}" {{ 'checked' if key == theme }} onchange="this.form.submit()">
 <span class="chip">{% for c in cols %}<i style="background:{{ c }}"></i>{% endfor %}</span>
-<span class="name">{{ label }} <span class="tick">{{ i('check') }}</span></span></label>{% endfor %}</div>
+<span class="name">{{ label }} <span class="tick2">{{ i("check") }}</span></span></label>{% endfor %}</div>
 <div class="seg" role="radiogroup" aria-label="Mode">{% for m, ic in [('auto','auto'),('light','sun'),('dark','moon')] %}
 <label><input type="radio" name="mode" value="{{ m }}" {{ 'checked' if m == mode }} onchange="this.form.submit()">{{ i(ic) }} {{ m|capitalize }}</label>{% endfor %}</div>
 <noscript><button style="margin-left:10px">Apply</button></noscript></form>
@@ -51,6 +51,22 @@
 {% if sent == 'ok' %}<p class="ok">Test sent.</p>{% elif sent == 'fail' %}<p class="bad">Test failed. Check container logs.</p>{% endif %}
 <form method="post" action="/settings/test"><button {{ 'disabled' if not targets }}>{{ i('bell') }} Send test notification</button></form></div></section>
 <section class="card">{{ head('Data', 'db') }}<div class="card-b"><p style="margin-top:0">Database, photos and uploads live in <code>{{ data }}</code>.</p><p class="muted" style="margin-bottom:0">Back up that folder (on Unraid: <code>/mnt/user/appdata/hearth</code>).</p></div></section></div>
+<section class="card" id="brand">{{ head('Hearth logo', 'star', ('<span class="badge ok">In use</span>' if brand.v2 else '<span class="badge">Preview</span>')) }}<div class="card-b">
+<p class="muted" style="margin:0 0 12px">A refreshed identity: a simple house holding a warm hearth flame. Review it here; the app keeps its current icon until you switch.</p>
+<div class="brandgrid">
+<figure class="lt"><img src="/static/brand/hearth-logo.svg" alt="Hearth logo, light" height="44"><figcaption>Primary · light</figcaption></figure>
+<figure class="dk"><img src="/static/brand/hearth-logo-dark.svg" alt="Hearth logo, dark" height="44"><figcaption style="color:#A8B0AB">Primary · dark</figcaption></figure>
+<figure class="lt"><img src="/static/brand/hearth-icon.svg" alt="Hearth app icon" width="64" height="64"><figcaption>App icon</figcaption></figure>
+<figure class="wh"><img src="/static/brand/hearth-mark.svg" alt="Hearth mark" width="56" height="56"><figcaption>Mark</figcaption></figure>
+</div>
+<div class="actions" style="margin-top:14px">
+<form method="post" action="/settings/brand" class="inline"><input type="hidden" name="use" value="{{ '0' if brand.v2 else '1' }}"><button class="{{ 'ghost' if brand.v2 else '' }}">{{ 'Restore original logo' if brand.v2 else 'Use the new logo' }}</button></form>
+<a class="btn ghost sm" href="/static/brand/hearth-logo.svg" download>{{ i('download') }} SVG</a><a class="btn ghost sm" href="/static/brand/icon-512.png" download>{{ i('download') }} PNG icon</a></div>
+</div></section>
+<section class="card" id="finances">{{ head('Expense categories', 'tag') }}<div class="card-b">
+<form method="post" action="/settings/categories" class="stack"><label>One per line <span class="hint">Maintenance costs from tasks always use “Maintenance”. Existing entries keep their category.</span>
+<textarea name="categories" rows="7">{{ expense_categories|join('\n') }}</textarea></label><div><button class="ghost">Save categories</button></div></form>
+</div></section>
 <section class="card" id="backup">{{ head('Backup, export & import', 'db') }}<div class="card-b">
 {% if imp %}<p class="badge {{ 'ok' if imp == 'ok' else 'bad' }}" style="white-space:normal;margin-top:0">{{ i('check' if imp == 'ok' else 'alert') }} {{ imsg }}</p>{% endif %}
 <div class="grid" style="margin-bottom:0">

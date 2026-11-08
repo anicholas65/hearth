@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, due as fmtdue %}
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty, due as fmtdue, repeat_picker %}
 {% block title %}{{ item.name }}{% endblock %}{% block content %}
 <a class="crumb" href="/items{{ '?room=' ~ item.room_id if item.room_id }}">{{ i('back') }} {{ item.room_name or 'Inventory' }}</a>
 {% if request.query_params.get('new') %}<div class="newbanner">{{ i('check') }} Item created from your photo. Add a few details below; everything is optional.</div>{% endif %}
@@ -35,8 +35,8 @@
 <div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name|cap }}</a><small>every {{ t.interval_days }} days</small></div>{{ fmtdue(t.next_due, today) }}
 <form method="post" action="/tasks/{{ t.id }}/done" class="inline"><button class="sm ghost" title="Mark done">{{ i('check') }}</button></form></div>{% endfor %}</div>
 {% else %}<p class="muted" style="margin:0 0 10px">No recurring care yet. Cleaning, filters, servicing?</p>{% endif %}
-<form class="form" method="post" action="/tasks"><input type="hidden" name="item_id" value="{{ item.id }}">
-<label>Task<input name="name" required placeholder="Clean coils"></label><label>Every (days)<input name="interval_days" type="number" min="1" value="180" required></label><button class="ghost">{{ i('plus') }} Add</button></form>
+<form class="form" method="post" action="/tasks"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}#maint">
+<label>Task<input name="name" required placeholder="Clean coils"></label>{{ repeat_picker(presets, 180) }}<button class="ghost">{{ i('plus') }} Add</button></form>
 </div></section>
 
 {% if upcoming %}<section class="card">{{ head('Coming up', 'calendar') }}<div class="card-b"><div class="list">
