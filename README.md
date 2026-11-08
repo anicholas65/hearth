@@ -52,4 +52,4 @@ DATA_DIR=./data .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 80
 Auth is optional basic auth. Without it, keep Hearth on your LAN or behind a reverse proxy with auth.
 
 ## About
-Hearth is developed by **Alan Nicholas** ([anicholasFilms](https://github.com/anicholas65)).
+Hearth is developed by **Alan Nicholas**.

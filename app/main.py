@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import DEVELOPER, DEVELOPER_HANDLE, REPO_URL, __version__, gcal, notify, shopping
+from . import DEVELOPER, REPO_URL, __version__, gcal, notify, shopping
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
 HERE = Path(__file__).parent
@@ -125,7 +125,7 @@ def render(request: Request, name: str, **ctx):
     ctx["mode"] = m if m in MODES else "auto"
     ctx["themes"] = THEMES
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
-                     "handle": DEVELOPER_HANDLE, "repo": REPO_URL}
+                     "repo": REPO_URL}
     return templates.TemplateResponse(request, name, ctx)
 
 

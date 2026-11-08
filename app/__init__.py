@@ -1,5 +1,4 @@
 __version__ = "1.5.0"
 APP_NAME = "Hearth"
 DEVELOPER = "Alan Nicholas"
-DEVELOPER_HANDLE = "anicholasFilms"
 REPO_URL = "https://github.com/anicholas65/hearth"
