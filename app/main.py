@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import gcal, notify, shopping
+from . import DEVELOPER, DEVELOPER_HANDLE, REPO_URL, __version__, gcal, notify, shopping
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
 HERE = Path(__file__).parent
@@ -124,6 +124,8 @@ def render(request: Request, name: str, **ctx):
     ctx["theme"] = t if t in THEMES else "ember"
     ctx["mode"] = m if m in MODES else "auto"
     ctx["themes"] = THEMES
+    ctx["about"] = {"version": __version__, "developer": DEVELOPER,
+                     "handle": DEVELOPER_HANDLE, "repo": REPO_URL}
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -1030,4 +1032,4 @@ def settings_google_sync():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": __version__}

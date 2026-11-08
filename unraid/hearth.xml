@@ -6,9 +6,13 @@
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
+  <Maintainer>
+    <Name>Alan Nicholas (anicholasFilms)</Name>
+    <WebPage>https://github.com/anicholas65</WebPage>
+  </Maintainer>
   <Support>https://github.com/anicholas65/hearth/issues</Support>
   <Project>https://github.com/anicholas65/hearth</Project>
-  <Overview>Self-hosted home manager: recurring maintenance reminders, room-by-room inventory, documents and manuals, contractors, and appliance replacement budgeting. Notifications via Apprise (ntfy, Discord, email, Pushover...).</Overview>
+  <Overview>Self-hosted home manager by Alan Nicholas (anicholasFilms): recurring maintenance reminders, room-by-room inventory, photos, documents and manuals, contractors, budget and replacement forecasting, schedule with Google Calendar sync, and shopping lists. Notifications via Apprise (ntfy, Discord, email, Pushover...).</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/anicholas65/hearth/main/unraid/hearth.xml</TemplateURL>

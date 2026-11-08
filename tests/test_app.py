@@ -397,3 +397,11 @@ def test_quick_parse_units():
     assert parse_quick("20x25x1 furnace filter") == ("20x25x1 furnace filter", None)
     assert guess_category("water filter") == "Filters" and guess_category("ice cream") == "Frozen"
     assert guess_category("mystery thing") == "Other"
+
+
+def test_about_and_credit(client):
+    from app import __version__
+    page = client.get("/settings").text
+    assert "Developed by <b>Alan Nicholas</b>" in page and f"v{__version__}" in page
+    assert "Developed by <a" in client.get("/").text
+    assert client.get("/api/health").json()["version"] == __version__
