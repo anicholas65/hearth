@@ -11,6 +11,39 @@
 <label><input type="radio" name="mode" value="{{ m }}" {{ 'checked' if m == mode }} onchange="this.form.submit()">{{ i(ic) }} {{ m|capitalize }}</label>{% endfor %}</div>
 <noscript><button style="margin-left:10px">Apply</button></noscript></form>
 <p class="muted" style="margin:12px 0 0;font-size:13px">Saved in this browser. Auto follows your device's light/dark setting.</p></div></section>
+<section class="card accent" id="google">{{ head('Google Calendar', 'calendar', ('<span class="badge ok">Connected</span>' if google.configured and google.enabled else '<span class="badge">Not connected</span>')) }}<div class="card-b">
+{% if g %}<p class="badge {{ 'ok' if g == 'ok' else 'bad' }}" style="white-space:normal;margin-top:0">{{ i('check' if g == 'ok' else 'alert') }} {{ gmsg }}</p>{% endif %}
+<div class="grid" style="margin-bottom:0">
+<div>
+<h2 style="margin-bottom:8px">{{ i('shield') }} 1. Service account key</h2>
+{% if google.key %}<p style="margin-top:0"><span class="badge ok">{{ i('check') }} Key installed</span><br><span class="muted" style="font-size:13px">Share your calendar with:</span><br><code style="overflow-wrap:anywhere">{{ google.email }}</code></p>
+<form method="post" action="/settings/google/key/delete" onsubmit="return confirm('Remove the key? Sync stops until a new one is uploaded.')"><button class="danger sm">{{ i('trash') }} Remove key</button></form>
+{% else %}<form class="actions" method="post" action="/settings/google/key" enctype="multipart/form-data">
+<label class="btn ghost">{{ i('upload') }} Upload JSON key<input type="file" name="file" accept=".json,application/json" onchange="this.form.submit()" hidden></label></form>{% endif %}
+<details style="margin-top:14px"><summary>{{ i('file') }} How to get a key (5 min, free)</summary><ol class="steps" style="font-size:14px">
+<li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> and create a project (e.g. “Hearth”).</li>
+<li>Enable the <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noopener">Google Calendar API</a> for it.</li>
+<li>Go to <b>IAM &amp; Admin → Service Accounts → Create</b>. No roles needed.</li>
+<li>Open the account → <b>Keys → Add key → JSON</b>. Upload that file here.</li>
+<li>In <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener">Google Calendar settings</a>, pick a calendar (or create one called “Home”) → <b>Share with specific people</b> → add the service account email with <b>Make changes to events</b>.</li>
+<li>Copy the <b>Calendar ID</b> from <b>Integrate calendar</b> into the field here, then <b>Test connection</b>.</li></ol></details>
+</div>
+<form class="form" method="post" action="/settings/google" style="align-content:start">
+<h2 class="wide">{{ i('sliders') }} 2. Calendar settings</h2>
+<label class="wide">Calendar ID<input name="calendar_id" value="{{ google.calendar_id }}" placeholder="abc123@group.calendar.google.com or you@gmail.com" {{ 'disabled' if google.calendar_env }}>{% if google.calendar_env %}<span class="muted">Set by GOOGLE_CALENDAR_ID</span>{% endif %}</label>
+<label>Time zone<input name="timezone" value="{{ google.timezone }}" placeholder="America/New_York" list="tzs"></label>
+<datalist id="tzs">{% for z in ['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu','America/Toronto','Europe/London','Europe/Berlin','Australia/Sydney','UTC'] %}<option value="{{ z }}">{% endfor %}</datalist>
+<label>Task reminder<select name="task_remind">{% for v, lbl in [(900, '9:00 AM the day before'), (540, '3:00 PM the day before'), (180, '9:00 PM the day before'), (2340, '9:00 AM two days before'), (10980, '9:00 AM a week before'), (0, 'Midnight on the day')] %}<option value="{{ v }}" {{ 'selected' if google.task_remind == v }}>{{ lbl }}</option>{% endfor %}</select></label>
+<label class="wide">Hearth URL (for links in events)<input name="public_url" value="{{ google.public_url }}" placeholder="http://192.168.1.64:8080"></label>
+<label class="chk wide"><input type="checkbox" name="enabled" value="1" {{ 'checked' if google.enabled }}> Sync tasks, appointments &amp; reminders</label>
+<div class="wide actions"><button>Save</button></div></form>
+</div>
+<div class="actions" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+<form method="post" action="/settings/google/test"><button class="ghost" {{ 'disabled' if not google.configured }}>{{ i('check') }} Test connection</button></form>
+<form method="post" action="/settings/google/sync"><button {{ 'disabled' if not (google.configured and google.enabled) }}>{{ i('calendar') }} Sync everything now</button></form>
+<span class="muted" style="font-size:13px">{% if google.last_sync %}Last sync {{ google.last_sync.replace('T', ' ') }}{% if google.last_error %} · <span class="bad">{{ google.last_error }}</span>{% else %} · <span class="ok">OK</span>{% endif %}{% endif %}</span></div>
+<p class="muted" style="font-size:13px;margin:10px 0 0">Maintenance tasks appear as all-day events (marked with a wrench) on their due date and move when you mark them done. Appointments and reminders (marked with a bell) sync with their own alerts. Changes made in Google aren't copied back.</p>
+</div></section>
 <div class="grid">
 <section class="card">{{ head('Notifications', 'bell') }}<div class="card-b">
 <p>{% if targets %}<span class="badge ok">{{ i('check') }} {{ targets }} Apprise target{{ 's' if targets != 1 }} configured</span>{% else %}<span class="badge warn">{{ i('alert') }} No targets</span><br><br>Set <code>APPRISE_URLS</code> on the container, e.g. <code>ntfy://ntfy.sh/my-topic</code>, <code>discord://id/token</code>, <code>mailtos://user:pass@gmail.com</code>.{% endif %}</p>

@@ -69,11 +69,31 @@ CREATE TABLE IF NOT EXISTS fund_entries (
     note TEXT,
     item_id INTEGER REFERENCES items(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL DEFAULT 'appointment' CHECK (kind IN ('appointment', 'reminder')),
+    title TEXT NOT NULL,
+    starts_at TEXT NOT NULL,          -- local 'YYYY-MM-DDTHH:MM' (or 'YYYY-MM-DD' if all_day)
+    ends_at TEXT,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    location TEXT,
+    notes TEXT,
+    contractor_id INTEGER REFERENCES contractors(id) ON DELETE SET NULL,
+    item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+    remind_minutes INTEGER,
+    gcal_event_id TEXT,
+    last_notified TEXT
+);
 """
 
 # columns added after first release: (table, column, ddl)
 MIGRATIONS = [
     ("photos", "caption", "ALTER TABLE photos ADD COLUMN caption TEXT"),
+    ("tasks", "gcal_event_id", "ALTER TABLE tasks ADD COLUMN gcal_event_id TEXT"),
 ]
 
 
@@ -107,3 +127,15 @@ def init_db() -> None:
             cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
             if col not in cols:
                 db.execute(ddl)
+
+
+def get_setting(key: str, default: str | None = None) -> str | None:
+    with get_db() as db:
+        r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r[0] if r and r[0] is not None else default
+
+
+def set_setting(key: str, value: str | None) -> None:
+    with get_db() as db:
+        db.execute("INSERT INTO settings (key, value) VALUES (?,?) "
+                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))

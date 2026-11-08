@@ -271,3 +271,13 @@ main{padding-bottom:96px}
 .tile .meta>.badge{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:860px){.fab span{display:none}.fab{padding:14px}}
 @media (max-width:560px){.stat.hl{grid-column:1/-1}}
+
+/* ---------- schedule ---------- */
+.dayhead{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);padding:14px 0 4px;border-bottom:1px solid var(--line)}
+.dayhead:first-child{padding-top:0}
+label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--fg);padding-bottom:10px}
+label.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.form [hidden]{display:none!important}
+.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.steps li::marker{color:var(--accent);font-weight:700}
+@media (max-width:520px){.modebtn{display:none}}

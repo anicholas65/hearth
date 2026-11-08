@@ -185,3 +185,141 @@ def test_caption_migration(tmp_path, monkeypatch):
     init_db()
     with get_db() as db:
         assert "caption" in {r["name"] for r in db.execute("PRAGMA table_info(photos)")}
+
+
+class FakeCal:
+    def __init__(self):
+        self.events, self.n, self.fail = {}, 0, False
+    def insert(self, body):
+        if self.fail:
+            raise RuntimeError("Google Calendar 403: no access")
+        self.n += 1; eid = f"ev{self.n}"; self.events[eid] = body; return eid
+    def update(self, eid, body):
+        if eid not in self.events:
+            return None
+        self.events[eid] = body; return eid
+    def delete(self, eid):
+        self.events.pop(eid, None)
+
+
+@pytest.fixture
+def fakecal(client, monkeypatch):
+    from app import gcal
+    cal = FakeCal()
+    monkeypatch.setattr(gcal, "get_client", lambda: cal)
+    monkeypatch.setattr(gcal, "configured", lambda: True)
+    return cal
+
+
+def test_gcal_task_events(client, fakecal):
+    from app.db import set_setting
+    set_setting("public_url", "http://hearth.lan")
+    client.post("/items", data={"name": "Furnace"})
+    client.post("/tasks", data={"name": "Change filter", "interval_days": 90, "next_due": "2026-12-01", "item_id": "1"})
+    ev = fakecal.events["ev1"]
+    assert ev["summary"] == "🔧 Change filter"
+    assert ev["start"] == {"date": "2026-12-01"} and ev["end"] == {"date": "2026-12-02"}
+    assert ev["reminders"]["overrides"] == [{"method": "popup", "minutes": 900}]
+    assert "Item: Furnace" in ev["description"] and "http://hearth.lan/tasks/1" in ev["description"]
+    client.post("/tasks/1/done", data={"done_on": "2026-12-03"})
+    assert list(fakecal.events) == ["ev1"] and fakecal.events["ev1"]["start"]["date"] == "2027-03-03"
+    assert "In Google Calendar" in client.get("/tasks/1").text
+    fakecal.events.clear()  # deleted in Google -> recreated on next sync
+    client.post("/tasks/1", data={"name": "Change filter", "interval_days": 90, "next_due": "2027-03-10"})
+    assert fakecal.events["ev2"]["start"]["date"] == "2027-03-10"
+    client.post("/tasks/1/delete")
+    assert fakecal.events == {}
+
+
+def test_gcal_appointments(client, fakecal):
+    from app.db import set_setting
+    set_setting("gcal_timezone", "America/Chicago")
+    client.post("/contractors", data={"name": "Mike", "trade": "Plumber", "phone": "555-0142"})
+    client.post("/schedule", data={"kind": "appointment", "title": "Fix sink", "date": "2026-12-05",
+                                   "start_time": "10:00", "end_time": "", "contractor_id": "1",
+                                   "location": "Home", "remind_minutes": "60"})
+    ev = fakecal.events["ev1"]
+    assert ev["summary"] == "Fix sink · Mike" and ev["location"] == "Home"
+    assert ev["start"] == {"dateTime": "2026-12-05T10:00:00", "timeZone": "America/Chicago"}
+    assert ev["end"]["dateTime"] == "2026-12-05T11:00:00"
+    assert ev["reminders"]["overrides"][0]["minutes"] == 60 and "555-0142" in ev["description"]
+    client.post("/schedule", data={"kind": "reminder", "title": "Take out bins", "date": "2026-12-06",
+                                   "start_time": "19:30", "remind_minutes": "0"})
+    r = fakecal.events["ev2"]
+    assert r["summary"] == "🔔 Take out bins" and r["end"]["dateTime"] == "2026-12-06T19:45:00"
+    client.post("/schedule", data={"kind": "appointment", "title": "Roof inspection", "date": "2026-12-08",
+                                   "all_day": "1", "remind_minutes": ""})
+    a = fakecal.events["ev3"]
+    assert a["start"] == {"date": "2026-12-08"} and a["end"] == {"date": "2026-12-09"} and "reminders" not in a
+    client.post("/schedule/1", data={"kind": "appointment", "title": "Fix sink", "date": "2026-12-05",
+                                     "start_time": "13:00", "end_time": "14:30", "remind_minutes": "30"})
+    assert fakecal.events["ev1"]["end"]["dateTime"] == "2026-12-05T14:30:00"
+    page = client.get("/schedule").text
+    assert "Fix sink" in page and "1:00 PM" in page and "Google" in page
+    client.post("/schedule/2/delete")
+    assert "ev2" not in fakecal.events
+    assert client.post("/schedule", data={"title": "", "date": ""}).status_code == 400
+
+
+def test_gcal_errors_recorded(client, fakecal):
+    from app.db import get_setting
+    fakecal.fail = True
+    client.post("/tasks", data={"name": "X", "interval_days": 30})
+    assert "403" in get_setting("gcal_last_error")
+    fakecal.fail = False
+    from app import gcal
+    assert gcal.sync_all() == (1, 0) and get_setting("gcal_last_error") is None
+
+
+def test_gcal_disabled_is_noop(client):
+    client.post("/tasks", data={"name": "X", "interval_days": 30})
+    from app.db import get_db
+    with get_db() as db:
+        assert db.execute("SELECT gcal_event_id FROM tasks").fetchone()[0] is None
+
+
+def test_gcal_settings_and_key(client, tmp_path):
+    import json
+    r = client.post("/settings/google/key", files={"file": ("k.json", b'{"type":"user"}', "application/json")},
+                    follow_redirects=False)
+    assert "g=err" in r.headers["location"]
+    key = json.dumps({"type": "service_account", "client_email": "hearth@proj.iam.gserviceaccount.com",
+                      "private_key": "x"}).encode()
+    client.post("/settings/google/key", files={"file": ("k.json", key, "application/json")})
+    assert (tmp_path / "google-service-account.json").stat().st_mode & 0o777 == 0o600
+    client.post("/settings/google", data={"calendar_id": "home@group.calendar.google.com",
+                                          "timezone": "America/Denver", "task_remind": "540", "enabled": "1"})
+    page = client.get("/settings").text
+    assert "hearth@proj.iam.gserviceaccount.com" in page and "Connected" in page
+    from app import gcal
+    assert gcal.configured() and gcal.timezone() == "America/Denver" and gcal.task_remind_minutes() == 540
+    client.post("/settings/google", data={"calendar_id": "home@group.calendar.google.com", "task_remind": "-5"})
+    assert gcal.task_remind_minutes() == 0 and not gcal.enabled()
+
+
+def test_calendar_http_handling():
+    from app.gcal import Calendar
+    class R:
+        def __init__(self, code, body=None): self.status_code, self._b, self.text = code, body or {}, ""
+        def json(self): return self._b
+    class S:
+        def __init__(self, r): self.r, self.calls = r, []
+        def put(self, url, **kw): self.calls.append(url); return self.r
+        delete = post = get = put
+    c = Calendar.__new__(Calendar); c.base = "https://x/calendars/a%40b"
+    c.s = S(R(404)); assert c.update("e1", {}) is None
+    c.s = S(R(410)); c.delete("e1")
+    c.s = S(R(403, {"error": {"message": "Forbidden"}}))
+    with pytest.raises(RuntimeError, match="403: Forbidden"):
+        c.insert({})
+
+
+def test_notify_includes_appointments(client, monkeypatch):
+    from app import notify
+    client.post("/schedule", data={"kind": "appointment", "title": "Plumber", "date": "2026-06-02", "start_time": "10:00"})
+    client.post("/schedule", data={"kind": "reminder", "title": "Far away", "date": "2026-06-20", "start_time": "10:00"})
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda t, b: sent.append(b) or True)
+    assert notify.run_check(date(2026, 6, 1)) == 1
+    assert "📅 Plumber (tomorrow at 10:00)" in sent[0] and "Far away" not in sent[0]
+    assert notify.run_check(date(2026, 6, 1)) == 0

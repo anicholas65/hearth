@@ -9,17 +9,36 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import notify
-from .db import data_dir, get_db, init_db
+from . import gcal, notify
+from .db import data_dir, get_db, get_setting, init_db, set_setting
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
+def _nicedate(v: str) -> str:
+    d = date.fromisoformat(v[:10])
+    t = date.today()
+    if d == t:
+        return "Today"
+    if d == t + timedelta(days=1):
+        return "Tomorrow"
+    return d.strftime("%a, %b ") + str(d.day) + (f", {d.year}" if d.year != t.year else "")
+
+
+def _nicetime(v: str | None) -> str:
+    if not v or len(v) < 16:
+        return ""
+    h, m = int(v[11:13]), v[14:16]
+    return f"{(h % 12) or 12}:{m} {'AM' if h < 12 else 'PM'}"
+
+
+templates.env.filters["nicedate"] = _nicedate
+templates.env.filters["nicetime"] = _nicetime
 templates.env.filters["n"] = lambda v: "" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
 
 DEFAULT_TASKS = [
@@ -44,6 +63,8 @@ async def lifespan(app: FastAPI):
     task = None
     if os.environ.get("NOTIFY_DISABLED") != "1":
         task = asyncio.create_task(notify.notify_loop())
+        if gcal.configured():
+            asyncio.create_task(asyncio.to_thread(gcal.sync_all))
     yield
     if task:
         task.cancel()
@@ -133,6 +154,11 @@ def dashboard(request: Request):
         recent = db.execute(
             "SELECT l.*, t.name AS task_name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
             "ORDER BY done_on DESC, l.id DESC LIMIT 5").fetchall()
+        appts = db.execute(
+            "SELECT a.*, c.name AS contractor_name FROM appointments a "
+            "LEFT JOIN contractors c ON c.id=a.contractor_id "
+            "WHERE substr(starts_at,1,10) BETWEEN ? AND ? ORDER BY starts_at LIMIT 6",
+            (today.isoformat(), soon)).fetchall()
     horizon = today.year + 2
     upcoming = sorted(
         [(replacement_year(i), i) for i in items
@@ -141,7 +167,7 @@ def dashboard(request: Request):
     overdue = sum(1 for t in due if t["next_due"] < today.isoformat())
     return render(request, "dashboard.html", due=due, warranties=warranties,
                   upcoming=upcoming, counts=counts, recent=recent, overdue=overdue,
-                  greeting=greeting())
+                  greeting=greeting(), appts=appts)
 
 
 # ---------- tasks ----------
@@ -158,18 +184,19 @@ def tasks_page(request: Request):
 
 
 @app.post("/tasks")
-def task_create(name: str = Form(...), interval_days: int = Form(...),
+def task_create(bg: BackgroundTasks, name: str = Form(...), interval_days: int = Form(...),
                 next_due: str = Form(None), item_id: str = Form(None), notes: str = Form(None)):
     with get_db() as db:
-        db.execute(
+        cur = db.execute(
             "INSERT INTO tasks (name, interval_days, next_due, item_id, notes) VALUES (?,?,?,?,?)",
             (name.strip(), interval_days, blank(next_due) or date.today().isoformat(),
              num(item_id, int), blank(notes)))
+    bg.add_task(gcal.sync_task, cur.lastrowid)
     return back("/tasks")
 
 
 @app.post("/tasks/seed")
-def task_seed():
+def task_seed(bg: BackgroundTasks):
     today = date.today()
     with get_db() as db:
         existing = {r[0] for r in db.execute("SELECT name FROM tasks")}
@@ -177,11 +204,12 @@ def task_seed():
             "INSERT INTO tasks (name, interval_days, next_due) VALUES (?,?,?)",
             [(n, d, (today + timedelta(days=min(d, 30))).isoformat())
              for n, d in DEFAULT_TASKS if n not in existing])
+    bg.add_task(gcal.sync_all)
     return back("/tasks")
 
 
 @app.post("/tasks/{task_id}/done")
-def task_done(task_id: int, done_on: str = Form(None), cost: str = Form(None),
+def task_done(bg: BackgroundTasks, task_id: int, done_on: str = Form(None), cost: str = Form(None),
               contractor_id: str = Form(None), notes: str = Form(None)):
     done = blank(done_on) or date.today().isoformat()
     with get_db() as db:
@@ -194,6 +222,7 @@ def task_done(task_id: int, done_on: str = Form(None), cost: str = Form(None),
         nxt = date.fromisoformat(done) + timedelta(days=t["interval_days"])
         db.execute("UPDATE tasks SET next_due=?, last_notified=NULL WHERE id=?",
                    (nxt.isoformat(), task_id))
+    bg.add_task(gcal.sync_task, task_id)
     return back("/tasks")
 
 
@@ -212,20 +241,107 @@ def task_detail(request: Request, task_id: int):
 
 
 @app.post("/tasks/{task_id}")
-def task_update(task_id: int, name: str = Form(...), interval_days: int = Form(...),
+def task_update(bg: BackgroundTasks, task_id: int, name: str = Form(...), interval_days: int = Form(...),
                 next_due: str = Form(...), item_id: str = Form(None), notes: str = Form(None)):
     with get_db() as db:
         db.execute(
             "UPDATE tasks SET name=?, interval_days=?, next_due=?, item_id=?, notes=? WHERE id=?",
             (name.strip(), interval_days, next_due, num(item_id, int), blank(notes), task_id))
+    bg.add_task(gcal.sync_task, task_id)
     return back(f"/tasks/{task_id}")
 
 
 @app.post("/tasks/{task_id}/delete")
-def task_delete(task_id: int):
+def task_delete(bg: BackgroundTasks, task_id: int):
     with get_db() as db:
+        r = db.execute("SELECT gcal_event_id FROM tasks WHERE id=?", (task_id,)).fetchone()
         db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+    if r and r[0]:
+        bg.add_task(gcal.delete_event, r[0])
     return back("/tasks")
+
+
+# ---------- schedule (appointments & reminders) ----------
+
+def appt_values(form) -> tuple:
+    kind = form.get("kind") if form.get("kind") in ("appointment", "reminder") else "appointment"
+    all_day = 1 if form.get("all_day") else 0
+    d = blank(form.get("date"))
+    if not d or not blank(form.get("title")):
+        raise HTTPException(400, "title and date required")
+    st, et = blank(form.get("start_time")), blank(form.get("end_time"))
+    if all_day:
+        starts, ends = d, None
+    else:
+        starts = f"{d}T{st or '09:00'}"
+        ends = f"{d}T{et}" if et and kind == "appointment" else None
+    rm = blank(form.get("remind_minutes"))
+    return (kind, form["title"].strip(), starts, ends, all_day, blank(form.get("location")),
+            blank(form.get("notes")), num(form.get("contractor_id"), int),
+            num(form.get("item_id"), int), int(rm) if rm is not None else None)
+
+
+APPT_COLS = ("kind, title, starts_at, ends_at, all_day, location, notes, contractor_id, "
+             "item_id, remind_minutes")
+
+
+@app.get("/schedule")
+def schedule_page(request: Request, past: int = 0):
+    today = date.today().isoformat()
+    op, order = ("<", "DESC") if past else (">=", "ASC")
+    with get_db() as db:
+        appts = db.execute(
+            "SELECT a.*, c.name AS contractor_name, c.phone AS contractor_phone, i.name AS item_name "
+            "FROM appointments a LEFT JOIN contractors c ON c.id=a.contractor_id "
+            f"LEFT JOIN items i ON i.id=a.item_id WHERE substr(starts_at,1,10) {op} ? "
+            f"ORDER BY starts_at {order} LIMIT 200", (today,)).fetchall()
+        contractors = db.execute("SELECT id, name, trade FROM contractors ORDER BY name").fetchall()
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+    return render(request, "schedule.html", appts=appts, contractors=contractors, items=items,
+                  past=past, gcal_on=gcal.configured() and gcal.enabled())
+
+
+@app.post("/schedule")
+async def schedule_create(request: Request, bg: BackgroundTasks):
+    v = appt_values(await request.form())
+    with get_db() as db:
+        cur = db.execute(f"INSERT INTO appointments ({APPT_COLS}) VALUES ({','.join('?' * 10)})", v)
+    bg.add_task(gcal.sync_appointment, cur.lastrowid)
+    return back("/schedule")
+
+
+@app.get("/schedule/{appt_id}")
+def schedule_detail(request: Request, appt_id: int):
+    with get_db() as db:
+        a = db.execute(
+            "SELECT a.*, c.name AS contractor_name FROM appointments a "
+            "LEFT JOIN contractors c ON c.id=a.contractor_id WHERE a.id=?", (appt_id,)).fetchone()
+        if not a:
+            raise HTTPException(404)
+        contractors = db.execute("SELECT id, name, trade FROM contractors ORDER BY name").fetchall()
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+    return render(request, "appointment.html", a=a, contractors=contractors, items=items,
+                  gcal_on=gcal.configured() and gcal.enabled())
+
+
+@app.post("/schedule/{appt_id}")
+async def schedule_update(request: Request, bg: BackgroundTasks, appt_id: int):
+    v = appt_values(await request.form())
+    sets = ", ".join(f"{c.strip()}=?" for c in APPT_COLS.split(","))
+    with get_db() as db:
+        db.execute(f"UPDATE appointments SET {sets}, last_notified=NULL WHERE id=?", v + (appt_id,))
+    bg.add_task(gcal.sync_appointment, appt_id)
+    return back(f"/schedule/{appt_id}")
+
+
+@app.post("/schedule/{appt_id}/delete")
+def schedule_delete(bg: BackgroundTasks, appt_id: int):
+    with get_db() as db:
+        r = db.execute("SELECT gcal_event_id FROM appointments WHERE id=?", (appt_id,)).fetchone()
+        db.execute("DELETE FROM appointments WHERE id=?", (appt_id,))
+    if r and r[0]:
+        bg.add_task(gcal.delete_event, r[0])
+    return back("/schedule")
 
 
 # ---------- rooms & items ----------
@@ -674,15 +790,77 @@ def budget_entry_delete(entry_id: int):
 # ---------- settings ----------
 
 @app.get("/settings")
-def settings_page(request: Request, sent: str | None = None):
+def settings_page(request: Request, sent: str | None = None, g: str | None = None,
+                  gmsg: str | None = None):
+    google = dict(
+        configured=gcal.configured(), key=gcal.key_path().is_file(),
+        email=gcal.service_account_email(), calendar_id=gcal.calendar_id() or "",
+        calendar_env=bool(os.environ.get("GOOGLE_CALENDAR_ID")),
+        timezone=gcal.timezone(), task_remind=gcal.task_remind_minutes(),
+        enabled=gcal.enabled(), public_url=get_setting("public_url") or "",
+        last_sync=get_setting("gcal_last_sync"), last_error=get_setting("gcal_last_error"))
     return render(request, "settings.html", targets=len(notify.apprise_urls()), sent=sent,
-                  lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()))
+                  lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()),
+                  google=google, g=g, gmsg=gmsg)
 
 
 @app.post("/settings/test")
 def settings_test():
     ok = notify.send("Hearth test", "Notifications are working.")
     return back(f"/settings?sent={'ok' if ok else 'fail'}")
+
+
+def gback(status: str, msg: str = "") -> RedirectResponse:
+    from urllib.parse import quote_plus
+    return back(f"/settings?g={status}&gmsg={quote_plus(msg)}#google")
+
+
+@app.post("/settings/google")
+def settings_google(calendar_id: str = Form(None), timezone: str = Form(None),
+                    task_remind: str = Form(None), public_url: str = Form(None),
+                    enabled: str = Form(None)):
+    set_setting("gcal_calendar_id", blank(calendar_id))
+    set_setting("gcal_timezone", blank(timezone))
+    rm = num(task_remind, int) if blank(task_remind) else 900
+    set_setting("gcal_task_remind", str(min(max(rm, 0), 40320)))  # Google's allowed range
+    set_setting("public_url", blank(public_url))
+    set_setting("gcal_enabled", "1" if enabled else "0")
+    return gback("ok", "Saved")
+
+
+@app.post("/settings/google/key")
+async def settings_google_key(file: UploadFile = File(...)):
+    try:
+        email = gcal.save_key(await file.read())
+    except ValueError as e:
+        return gback("err", str(e))
+    return gback("ok", f"Key saved. Share your calendar with {email}")
+
+
+@app.post("/settings/google/key/delete")
+def settings_google_key_delete():
+    p = data_dir() / "google-service-account.json"
+    p.unlink(missing_ok=True)
+    return gback("ok", "Key removed")
+
+
+@app.post("/settings/google/test")
+def settings_google_test():
+    try:
+        name = gcal.test_connection()
+    except Exception as e:
+        return gback("err", str(e))
+    return gback("ok", f"Connected to calendar \u201c{name}\u201d")
+
+
+@app.post("/settings/google/sync")
+def settings_google_sync():
+    if not gcal.configured():
+        return gback("err", "Not configured yet")
+    ok, failed = gcal.sync_all()
+    if failed:
+        return gback("err", f"Synced {ok}, {failed} failed: {get_setting('gcal_last_error')}")
+    return gback("ok", f"Synced {ok} events to Google Calendar")
 
 
 @app.get("/api/health")

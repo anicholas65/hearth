@@ -25,35 +25,48 @@ def send(title: str, body: str) -> bool:
     return bool(ap.notify(title=title, body=body))
 
 
-def due_digest(today: date | None = None) -> tuple[list[int], str]:
-    """Tasks due within NOTIFY_LEAD_DAYS that haven't been notified today."""
+def due_digest(today: date | None = None) -> tuple[list[int], list[int], str]:
+    """Tasks due within NOTIFY_LEAD_DAYS and appointments today/tomorrow not yet notified today."""
     today = today or date.today()
     lead = int(os.environ.get("NOTIFY_LEAD_DAYS", "3"))
     horizon = (today + timedelta(days=lead)).isoformat()
+    tomorrow = (today + timedelta(days=1)).isoformat()
     with get_db() as db:
         rows = db.execute(
             "SELECT id, name, next_due FROM tasks WHERE next_due <= ? "
             "AND (last_notified IS NULL OR last_notified < ?) ORDER BY next_due",
             (horizon, today.isoformat()),
         ).fetchall()
+        appts = db.execute(
+            "SELECT id, kind, title, starts_at, all_day FROM appointments "
+            "WHERE substr(starts_at,1,10) BETWEEN ? AND ? "
+            "AND (last_notified IS NULL OR last_notified < ?) ORDER BY starts_at",
+            (today.isoformat(), tomorrow, today.isoformat()),
+        ).fetchall()
     lines = []
+    for a in appts:
+        when = "today" if a["starts_at"][:10] == today.isoformat() else "tomorrow"
+        at = "" if a["all_day"] else f" at {a['starts_at'][11:16]}"
+        icon = "🔔" if a["kind"] == "reminder" else "📅"
+        lines.append(f"{icon} {a['title']} ({when}{at})")
     for r in rows:
         tag = "OVERDUE" if r["next_due"] < today.isoformat() else "due"
         lines.append(f"- {r['name']} ({tag} {r['next_due']})")
-    return [r["id"] for r in rows], "\n".join(lines)
+    return [r["id"] for r in rows], [a["id"] for a in appts], "\n".join(lines)
 
 
 def run_check(today: date | None = None) -> int:
     today = today or date.today()
-    ids, body = due_digest(today)
-    if not ids or not send(f"Hearth: {len(ids)} home task(s) due", body):
+    tids, aids, body = due_digest(today)
+    n = len(tids) + len(aids)
+    if not n or not send(f"Hearth: {n} upcoming item(s)", body):
         return 0
     with get_db() as db:
-        db.executemany(
-            "UPDATE tasks SET last_notified = ? WHERE id = ?",
-            [(today.isoformat(), i) for i in ids],
-        )
-    return len(ids)
+        db.executemany("UPDATE tasks SET last_notified = ? WHERE id = ?",
+                       [(today.isoformat(), i) for i in tids])
+        db.executemany("UPDATE appointments SET last_notified = ? WHERE id = ?",
+                       [(today.isoformat(), i) for i in aids])
+    return n
 
 
 async def notify_loop() -> None:

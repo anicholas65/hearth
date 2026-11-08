@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_macros.html" import i, head %}
+{% block title %}{{ a.title }}{% endblock %}{% block content %}
+<a class="crumb" href="/schedule">{{ i('back') }} Schedule</a>
+<div class="page-head"><div><h1>{{ a.title }}</h1>
+<p>{{ a.starts_at|nicedate }} · {{ 'All day' if a.all_day else a.starts_at|nicetime }}{% if a.ends_at and not a.all_day %} – {{ a.ends_at|nicetime }}{% endif %}{% if a.contractor_name %} · {{ a.contractor_name }}{% endif %}</p></div>
+{% if gcal_on %}{% if a.gcal_event_id %}<span class="badge ok">{{ i('check') }} In Google Calendar</span>{% else %}<span class="badge warn">{{ i('clock') }} Not synced yet</span>{% endif %}{% endif %}</div>
+<section class="card accent">{{ head('Details', 'sliders') }}<div class="card-b">
+<form class="form" method="post" action="/schedule/{{ a.id }}">{% include "_appt_form.html" %}<div class="wide"><button>Save{{ ' & sync' if gcal_on }}</button></div></form>
+<form method="post" action="/schedule/{{ a.id }}/delete" onsubmit="return confirm('Delete this {{ a.kind }}{{ ' (also removes it from Google Calendar)' if gcal_on and a.gcal_event_id }}?')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete</button></form>
+</div></section>
+{% endblock %}

@@ -5,7 +5,7 @@
 <p>{% if overdue %}{{ overdue }} task{{ 's' if overdue != 1 }} overdue, {{ due|length - overdue }} more due in the next two weeks.
 {% elif due %}{{ due|length }} task{{ 's' if due|length != 1 }} coming up in the next two weeks.
 {% elif counts["tasks"] %}Everything's on track. Nothing due for two weeks.{% else %}Let's set up your home. Start with some maintenance tasks.{% endif %}</p>
-<div class="actions"><a class="btn" href="/tasks">{{ i('wrench') }} Maintenance</a><a class="btn ghost" href="/items">{{ i('plus') }} Add item</a></div></div>
+<div class="actions"><a class="btn" href="/tasks">{{ i('wrench') }} Maintenance</a><a class="btn ghost" href="/schedule">{{ i('calendar') }} Schedule</a><a class="btn ghost" href="/items">{{ i('plus') }} Add item</a></div></div>
 <svg class="art" viewBox="0 0 280 190" aria-hidden="true">
 <circle cx="226" cy="44" r="22" fill="var(--accent-2)" opacity=".35"/><circle cx="226" cy="44" r="13" fill="var(--accent-2)" opacity=".7"/>
 <ellipse cx="140" cy="182" rx="150" ry="16" fill="var(--accent)" opacity=".14"/>
@@ -39,6 +39,10 @@
 {% elif counts["tasks"] == 0 %}{% call empty('wrench', 'No maintenance tasks yet.') %}<form method="post" action="/tasks/seed"><button class="sm">{{ i('plus') }} Add common home tasks</button></form>{% endcall %}
 {% else %}{% call empty('check', 'All caught up.') %}{% endcall %}{% endif %}</div></section>
 
+{% if appts %}<section class="card">{{ head('Coming up', 'calendar', '<a class="badge acc" href="/schedule">Schedule</a>') }}<div class="card-b"><div class="list">
+{% for a in appts %}<div class="row"><div class="dot {{ 'warn' if a.kind == 'reminder' }}">{{ i('bell' if a.kind == 'reminder' else 'calendar') }}</div>
+<div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title }}</a><small>{{ a.starts_at|nicedate }} · {{ 'All day' if a.all_day else a.starts_at|nicetime }}{% if a.contractor_name %} · {{ a.contractor_name }}{% endif %}</small></div></div>{% endfor %}
+</div></div></section>{% endif %}
 <section class="card">{{ head('Warranties expiring', 'shield') }}<div class="card-b">
 {% if warranties %}<div class="list">{% for w in warranties %}<div class="row">
 {% if w.cover is defined and w.cover %}<img class="thumb" src="/photos/{{ w.cover }}/thumb" alt="">{% else %}<div class="dot warn">{{ i('shield') }}</div>{% endif %}
