@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Settings{% endblock %}{% block content %}
+<h1>Settings</h1>
+<section class="card"><h2>Notifications</h2>
+<p>{% if targets %}<span class="ok">{{ targets }} Apprise target(s) configured.</span>{% else %}<span class="warn">No targets.</span> Set <code>APPRISE_URLS</code> in the container (e.g. <code>ntfy://ntfy.sh/my-topic</code>, <code>discord://id/token</code>, <code>mailtos://user:pass@gmail.com</code>).{% endif %}</p>
+<p class="muted">Reminders go out once a day for tasks due within {{ lead }} day(s) (<code>NOTIFY_LEAD_DAYS</code>).</p>
+{% if sent == 'ok' %}<p class="ok">Test sent.</p>{% elif sent == 'fail' %}<p class="bad">Test failed. Check container logs.</p>{% endif %}
+<form method="post" action="/settings/test"><button {{ 'disabled' if not targets }}>Send test notification</button></form></section>
+<section class="card"><h2>Data</h2><p>Database and uploads live in <code>{{ data }}</code>. Back up that folder.</p></section>
+{% endblock %}

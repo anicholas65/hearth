@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_macros.html" import money %}
+{% block title %}{{ t.name }}{% endblock %}{% block content %}
+<p><a href="/tasks">← Maintenance</a></p><h1>{{ t.name }}</h1>
+<section class="card"><form class="form" method="post" action="/tasks/{{ t.id }}">
+<label>Task<input name="name" value="{{ t.name }}" required></label>
+<label>Repeat every (days)<input name="interval_days" type="number" min="1" value="{{ t.interval_days }}" required></label>
+<label>Next due<input name="next_due" type="date" value="{{ t.next_due }}" required></label>
+<label>Item<select name="item_id"><option value="">—</option>{% for i in items %}<option value="{{ i.id }}" {{ 'selected' if i.id == t.item_id }}>{{ i.name }}</option>{% endfor %}</select></label>
+<label>Notes<input name="notes" value="{{ t.notes or '' }}"></label><button>Save</button></form>
+<form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('Delete task and its history?')" style="margin-top:10px"><button class="danger sm">Delete task</button></form></section>
+<section class="card"><h2>History</h2><table><tr><th>Date</th><th>By</th><th class="num">Cost</th><th>Notes</th></tr>
+{% for l in logs %}<tr><td>{{ l.done_on }}</td><td>{{ l.contractor_name or 'DIY' }}</td><td class="num">{{ money(l.cost) }}</td><td>{{ l.notes or '' }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">Never completed.</td></tr>{% endfor %}</table></section>
+{% endblock %}

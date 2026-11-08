@@ -1,0 +1,4 @@
+{% macro due(d, today) -%}
+{% if d < today %}<span class="bad">{{ d }} · overdue</span>{% elif d == today %}<span class="warn">today</span>{% else %}{{ d }}{% endif %}
+{%- endmacro %}
+{% macro money(v) -%}{% if v %}${{ "{:,.0f}".format(v) }}{% else %}<span class="muted">—</span>{% endif %}{%- endmacro %}

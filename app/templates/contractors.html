@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_macros.html" import money %}
+{% block title %}Contractors{% endblock %}{% block content %}
+<h1>Contractors</h1>
+<section class="card"><form class="form" method="post" action="/contractors">
+<label>Name<input name="name" required></label><label>Trade<input name="trade" placeholder="Plumber" list="trades"></label>
+<datalist id="trades">{% for t in ['Plumber','Electrician','HVAC','Roofer','Handyman','Landscaper','Pest control','Appliance repair','Painter'] %}<option value="{{ t }}">{% endfor %}</datalist>
+<label>Phone<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label><label>Notes<input name="notes"></label><button>Add</button></form></section>
+<section class="card"><table><tr><th>Name</th><th>Trade</th><th>Contact</th><th class="num">Jobs</th><th class="num">Spent</th><th>Last job</th><th></th></tr>
+{% for c in contractors %}<tr><td>{{ c.name }}{% if c.notes %}<br><span class="muted">{{ c.notes }}</span>{% endif %}</td><td>{{ c.trade or '' }}</td>
+<td>{% if c.phone %}<a href="tel:{{ c.phone }}">{{ c.phone }}</a><br>{% endif %}{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}</td>
+<td class="num">{{ c.jobs }}</td><td class="num">{{ money(c.spent) }}</td><td class="muted">{{ c.last or '' }}</td>
+<td><form class="inline" method="post" action="/contractors/{{ c.id }}/delete" onsubmit="return confirm('Delete contractor?')"><button class="danger sm">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="7" class="muted">No contractors.</td></tr>{% endfor %}</table></section>
+{% endblock %}

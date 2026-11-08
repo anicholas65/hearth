@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Hearth{% endblock %} · Hearth</title><link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>"></head>
+<body><header><span class="brand">🏠 Hearth</span><nav>
+{% set p = request.url.path %}
+<a href="/" class="{{ 'on' if p == '/' }}">Dashboard</a>
+<a href="/tasks" class="{{ 'on' if p.startswith('/tasks') }}">Maintenance</a>
+<a href="/items" class="{{ 'on' if p.startswith('/items') }}">Inventory</a>
+<a href="/documents" class="{{ 'on' if p.startswith('/documents') }}">Documents</a>
+<a href="/contractors" class="{{ 'on' if p.startswith('/contractors') }}">Contractors</a>
+<a href="/budget" class="{{ 'on' if p.startswith('/budget') }}">Budget</a>
+<a href="/settings" class="{{ 'on' if p.startswith('/settings') }}">Settings</a>
+</nav></header><main>{% block content %}{% endblock %}</main></body></html>

@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_macros.html" import due as fmtdue, money %}
+{% block title %}Dashboard{% endblock %}{% block content %}
+<h1>Dashboard</h1>
+<div class="stats">
+<a class="stat" href="/tasks" style="text-decoration:none;color:inherit"><b>{{ counts.tasks }}</b><span>maintenance tasks</span></a>
+<a class="stat" href="/items" style="text-decoration:none;color:inherit"><b>{{ counts.items }}</b><span>inventory items</span></a>
+<a class="stat" href="/documents" style="text-decoration:none;color:inherit"><b>{{ counts.documents }}</b><span>documents</span></a>
+<a class="stat" href="/contractors" style="text-decoration:none;color:inherit"><b>{{ counts.contractors }}</b><span>contractors</span></a>
+</div>
+<div class="grid">
+<section class="card"><h2>Due in the next 2 weeks</h2>
+{% if due %}<table>{% for t in due %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.name }}</a>{% if t.item_name %} <span class="muted">· {{ t.item_name }}</span>{% endif %}</td><td>{{ fmtdue(t.next_due, today) }}</td>
+<td><form class="inline" method="post" action="/tasks/{{ t.id }}/done"><button class="sm">Done</button></form></td></tr>{% endfor %}</table>
+{% elif counts.tasks == 0 %}<p class="muted">No tasks yet. <form class="inline" method="post" action="/tasks/seed"><button class="sm ghost">Add common home tasks</button></form></p>
+{% else %}<p class="ok">All caught up.</p>{% endif %}</section>
+<section class="card"><h2>Warranties expiring (60 days)</h2>
+{% if warranties %}<table>{% for i in warranties %}<tr><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td class="warn">{{ i.warranty_until }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">Nothing expiring soon.</p>{% endif %}</section>
+<section class="card"><h2>Replacements due by {{ today[:4]|int + 2 }}</h2>
+{% if upcoming %}<table>{% for y, i in upcoming %}<tr><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td class="{{ 'bad' if y <= today[:4]|int }}">{{ y }}</td><td class="num">{{ money(i.replace_cost) }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">None forecast. Add purchase date + lifespan to items.</p>{% endif %}</section>
+<section class="card"><h2>Recently completed</h2>
+{% if recent %}<table>{% for l in recent %}<tr><td>{{ l.task_name }}</td><td class="muted">{{ l.done_on }}</td><td class="num">{{ money(l.cost) }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">No history yet.</p>{% endif %}</section>
+</div>{% endblock %}

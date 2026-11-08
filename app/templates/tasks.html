@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_macros.html" import due as fmtdue %}
+{% block title %}Maintenance{% endblock %}{% block content %}
+<h1>Maintenance</h1>
+<section class="card"><h2>New task</h2>
+<form class="form" method="post" action="/tasks">
+<label>Task<input name="name" required placeholder="Replace HVAC filter"></label>
+<label>Repeat every (days)<input name="interval_days" type="number" min="1" value="90" required></label>
+<label>First due<input name="next_due" type="date" value="{{ today }}"></label>
+<label>Item<select name="item_id"><option value="">—</option>{% for i in items %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}</select></label>
+<label>Notes<input name="notes"></label><button>Add</button></form>
+<form method="post" action="/tasks/seed" style="margin-top:10px"><button class="ghost sm">+ Add common home maintenance tasks</button></form>
+</section>
+<section class="card"><table><tr><th>Task</th><th>Every</th><th>Next due</th><th>Mark done</th></tr>
+{% for t in tasks %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.name }}</a>{% if t.item_name %}<br><span class="muted">{{ t.item_name }}</span>{% endif %}</td>
+<td>{{ t.interval_days }}d</td><td>{{ fmtdue(t.next_due, today) }}</td>
+<td><details><summary>Done…</summary><form class="form" method="post" action="/tasks/{{ t.id }}/done" style="margin-top:8px">
+<label>Date<input type="date" name="done_on" value="{{ today }}"></label><label>Cost<input name="cost" type="number" step="0.01"></label>
+<label>Contractor<select name="contractor_id"><option value="">DIY</option>{% for c in contractors %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+<label>Notes<input name="notes"></label><button class="sm">Log</button></form></details></td></tr>
+{% else %}<tr><td colspan="4" class="muted">No tasks yet.</td></tr>{% endfor %}</table></section>
+{% endblock %}

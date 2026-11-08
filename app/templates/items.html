@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_macros.html" import money %}
+{% block title %}Inventory{% endblock %}{% block content %}
+<h1>Inventory</h1>
+<section class="card"><h2>Rooms</h2><p>
+<a class="pill {{ 'on' if not room }}" href="/items">All</a>
+{% for r in rooms %}<a class="pill {{ 'on' if room == r.id }}" href="/items?room={{ r.id }}">{{ r.name }} · {{ r.n }}</a> {% endfor %}</p>
+<form class="form" method="post" action="/rooms" style="max-width:420px"><label>New room<input name="name" required placeholder="Kitchen"></label><button class="ghost">Add room</button></form>
+{% if room %}<form method="post" action="/rooms/{{ room }}/delete" onsubmit="return confirm('Delete room? Items are kept.')" style="margin-top:8px"><button class="danger sm">Delete this room</button></form>{% endif %}
+</section>
+<section class="card"><details {{ 'open' if not items }}><summary><b>Add item</b></summary>
+<form class="form" method="post" action="/items" style="margin-top:10px">{% set item = None %}{% include "_item_form.html" %}<button>Add item</button></form></details></section>
+<section class="card"><table><tr><th>Item</th><th>Room</th><th>Brand / model</th><th>Warranty</th><th class="num">Value</th></tr>
+{% for i in items %}<tr><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td>{{ i.room_name or '' }}</td><td class="muted">{{ i.brand or '' }} {{ i.model or '' }}</td>
+<td>{% if i.warranty_until %}<span class="{{ 'muted' if i.warranty_until < today else 'ok' }}">{{ i.warranty_until }}</span>{% endif %}</td><td class="num">{{ money(i.price) }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">No items.</td></tr>{% endfor %}
+{% if items %}<tr><th colspan="4">Total</th><th class="num">{{ money(total) }}</th></tr>{% endif %}</table></section>
+{% endblock %}

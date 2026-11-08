@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_macros.html" import money, due as fmtdue %}
+{% block title %}{{ item.name }}{% endblock %}{% block content %}
+<p><a href="/items">← Inventory</a></p><h1>{{ item.name }}</h1>
+<div class="stats">
+<div class="stat"><b>{{ money(item.price) }}</b><span>purchase price</span></div>
+<div class="stat"><b>{{ item.warranty_until or '—' }}</b><span>warranty</span></div>
+<div class="stat"><b>{{ replace_year or '—' }}</b><span>est. replacement</span></div>
+<div class="stat"><b>{{ money(item.replace_cost) }}</b><span>replacement cost</span></div></div>
+<div class="grid">
+<section class="card"><h2>Documents & manuals</h2>
+{% for d in docs %}<p><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a> <span class="muted">{{ d.uploaded_at[:10] }}</span></p>{% else %}<p class="muted">None attached.</p>{% endfor %}
+<form class="form" method="post" action="/documents" enctype="multipart/form-data"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
+<label>File<input type="file" name="file" required></label><label>Title<input name="title" placeholder="Owner's manual"></label><button class="ghost">Upload</button></form></section>
+<section class="card"><h2>Maintenance</h2>
+{% for t in tasks %}<p><a href="/tasks/{{ t.id }}">{{ t.name }}</a> · {{ fmtdue(t.next_due, today) }}</p>{% else %}<p class="muted">No tasks linked.</p>{% endfor %}
+<form class="form" method="post" action="/tasks"><input type="hidden" name="item_id" value="{{ item.id }}">
+<label>Task<input name="name" required></label><label>Every (days)<input name="interval_days" type="number" min="1" value="180" required></label><button class="ghost">Add</button></form>
+{% if history %}<h2 style="margin-top:14px">Service history</h2><table>{% for l in history %}<tr><td>{{ l.done_on }}</td><td>{{ l.task_name }}</td><td class="num">{{ money(l.cost) }}</td></tr>{% endfor %}</table>{% endif %}
+</section></div>
+<section class="card"><h2>Details</h2><form class="form" method="post" action="/items/{{ item.id }}">{% include "_item_form.html" %}<button>Save</button></form>
+<form method="post" action="/items/{{ item.id }}/delete" onsubmit="return confirm('Delete item?')" style="margin-top:10px"><button class="danger sm">Delete item</button></form></section>
+{% endblock %}
