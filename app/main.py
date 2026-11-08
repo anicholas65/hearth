@@ -202,7 +202,7 @@ def render(request: Request, name: str, **ctx):
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
                      "repo": REPO_URL}
     ctx["sections"] = SECTIONS
-    v2 = get_setting("brand_v2") == "1"
+    v2 = get_setting("brand_v2") != "0"  # new logo by default; Settings can restore the original
     ctx["brand"] = {"v2": v2, "icon": "/static/brand/hearth-icon.svg" if v2 else "/static/icon.png",
                     "favicon": "/static/favicon.svg" if v2 else "/static/icon.png"}
     ctx["msg"] = request.query_params.get("msg")

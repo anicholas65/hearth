@@ -52,7 +52,7 @@
 <form method="post" action="/settings/test"><button {{ 'disabled' if not targets }}>{{ i('bell') }} Send test notification</button></form></div></section>
 <section class="card">{{ head('Data', 'db') }}<div class="card-b"><p style="margin-top:0">Database, photos and uploads live in <code>{{ data }}</code>.</p><p class="muted" style="margin-bottom:0">Back up that folder (on Unraid: <code>/mnt/user/appdata/hearth</code>).</p></div></section></div>
 <section class="card" id="brand">{{ head('Hearth logo', 'star', ('<span class="badge ok">In use</span>' if brand.v2 else '<span class="badge">Preview</span>')) }}<div class="card-b">
-<p class="muted" style="margin:0 0 12px">A refreshed identity: a simple house holding a warm hearth flame. Review it here; the app keeps its current icon until you switch.</p>
+<p class="muted" style="margin:0 0 12px">A refreshed identity: a simple house holding a warm hearth flame. You can switch back to the original icon at any time.</p>
 <div class="brandgrid">
 <figure class="lt"><img src="/static/brand/hearth-logo.svg" alt="Hearth logo, light" height="44"><figcaption>Primary · light</figcaption></figure>
 <figure class="dk"><img src="/static/brand/hearth-logo-dark.svg" alt="Hearth logo, dark" height="44"><figcaption style="color:#A8B0AB">Primary · dark</figcaption></figure>

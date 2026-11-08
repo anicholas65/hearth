@@ -711,6 +711,8 @@ def test_friendly_errors_and_brand_toggle(client):
     assert r.status_code == 404 and "find that page" in r.text and "<html" in r.text
     assert client.get("/items/999", headers={"accept": "application/json"}).json() == {"detail": "Not Found"}
     assert client.post("/tasks", data={"name": " "}, headers={"accept": "text/html"}).status_code == 400
+    assert "/static/brand/hearth-icon.svg" in client.get("/").text  # new logo is the default
+    client.post("/settings/brand", data={"use": "0"})
     assert "/static/icon.png" in client.get("/").text
     client.post("/settings/brand", data={"use": "1"})
     html = client.get("/").text
