@@ -2,6 +2,9 @@
 
 Self-hosted home manager for Unraid: maintenance reminders, home inventory, photos, documents & manuals, contractors, and budgeting. FastAPI + SQLite, single container.
 
+## What's new in 2.1
+A full visual and usability refresh: new design system and light/dark themes, a new logo (opt-in in Settings), illustrations, task filters and repeat presets, one-time tasks, guided item creation, inventory search and filters, expense categories and receipts, an editable ledger, and a replacement forecast with 1–10 year periods. See [CHANGELOG.md](CHANGELOG.md) and [docs/HEARTH-2.1.md](docs/HEARTH-2.1.md).
+
 ## What's new in 2.0
 - **Simpler navigation**: four destinations (Home, Plan, Organize, Finances) with sub-tabs, plus a bottom tab bar on phones.
 - **Action-first home**: what needs attention, one "Up next" timeline (tasks, appointments, expiring warranties), quick actions, a setup checklist instead of empty counters, and home insights.
