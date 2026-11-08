@@ -88,6 +88,22 @@ CREATE TABLE IF NOT EXISTS appointments (
     gcal_event_id TEXT,
     last_notified TEXT
 );
+CREATE TABLE IF NOT EXISTS shopping_items (
+    id INTEGER PRIMARY KEY,
+    list TEXT NOT NULL CHECK (list IN ('groceries', 'supplies')),
+    name TEXT NOT NULL,
+    qty TEXT,
+    category TEXT,
+    store TEXT,
+    note TEXT,
+    price REAL,
+    item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'needed' CHECK (status IN ('needed', 'checked', 'bought')),
+    added_at TEXT NOT NULL,
+    checked_at TEXT,
+    bought_at TEXT
+);
+CREATE INDEX IF NOT EXISTS shopping_status ON shopping_items(list, status);
 """
 
 # columns added after first release: (table, column, ddl)

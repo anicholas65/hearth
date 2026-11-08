@@ -281,3 +281,36 @@ label.chk input{width:18px;height:18px;accent-color:var(--accent)}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 .steps li::marker{color:var(--accent);font-weight:700}
 @media (max-width:520px){.modebtn{display:none}}
+
+/* ---------- shopping ---------- */
+.qa-row{display:flex;gap:10px}
+.qa-row input{font-size:17px;padding:12px 14px}
+.qa-row button{flex:none;padding:0 20px}
+.shop-grid{display:grid;gap:18px;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);align-items:start}
+@media (max-width:860px){.shop-grid{grid-template-columns:1fr}}
+.row.shop{align-items:flex-start}
+.row.shop .nm{font-weight:600;font-size:16px}
+.tick{width:30px;height:30px;padding:0;border-radius:50%;background:var(--card);border:2px solid var(--line-strong);color:transparent;box-shadow:none;flex:none;margin-top:1px}
+.tick svg.i{width:16px;height:16px;stroke-width:3}
+.tick:hover{border-color:var(--accent);color:var(--accent);filter:none}
+.row.shop.done .tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.row.shop.done .nm{text-decoration:line-through;color:var(--muted)}
+.row.leaving{opacity:.35;transition:opacity .15s}
+details.edit>summary{font-size:12.5px;font-weight:600;margin-top:2px}
+details.edit[open]>summary{margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--tint);color:var(--fg);border:1px solid var(--line-strong);border-radius:99px;padding:5px 12px 5px 9px;font-size:14px;font-weight:500;box-shadow:none}
+.chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);filter:none}
+.chip svg.i{width:14px;height:14px}
+@media (max-width:520px){nav a[href="/"]{display:none}}
+nav.tabs,.tabs{flex:none;overflow:visible}
+.row.shop .del button{border-color:transparent;color:var(--muted);background:none}
+.row.shop .del button:hover{border-color:color-mix(in srgb,var(--bad) 50%,var(--line));color:var(--bad);background:var(--bad-soft)}
+details.edit>summary{color:var(--muted);font-weight:500}
+details.edit>summary:hover{color:var(--accent)}
+@media (hover:hover){.row.shop details.edit:not([open])>summary{opacity:0;transition:opacity .12s}
+  .row.shop:hover details.edit>summary,.row.shop details.edit>summary:focus-visible{opacity:1}}
+.row.shop details.edit{display:inline;margin-left:6px}
+.row.shop details.edit>summary{display:inline-flex}
+.row.shop details.edit[open]>form{margin:8px 0}
+.row.shop .grow small{margin-top:1px}

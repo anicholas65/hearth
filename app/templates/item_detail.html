@@ -42,6 +42,10 @@
 <div class="grow"><b>{{ l.task_name }}</b><small>{{ l.done_on }}</small></div><span>{{ money(l.cost) }}</span></div>{% endfor %}</div>{% endif %}
 </div></section></div>
 
+<section class="card">{{ head('Need supplies for this?', 'cart') }}<div class="card-b">
+<form class="form" method="post" action="/shopping"><input type="hidden" name="list" value="supplies"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
+<label>Add to supplies list<input name="name" required placeholder="{{ 'Replacement filter' if 'furnace' in item.name|lower or 'hvac' in item.name|lower else 'Part or supply' }}{{ ' (' ~ item.model ~ ')' if item.model }}"></label>
+<label>Qty<input name="qty" placeholder="1"></label><button class="ghost">{{ i('cart') }} Add to list</button></form></div></section>
 <section class="card">{{ head('Details', 'sliders') }}<div class="card-b">
 <form class="form" method="post" action="/items/{{ item.id }}">{% include "_item_form.html" %}<div class="wide"><button>Save changes</button></div></form>
 <form method="post" action="/items/{{ item.id }}/delete" onsubmit="return confirm('Delete item and its photos?')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete item</button></form></div></section>

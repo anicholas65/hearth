@@ -10,6 +10,7 @@ Self-hosted home manager for Unraid: maintenance reminders, home inventory, phot
 - **Contractors** – contact list with job count and total spend.
 - **Budget → Balance** – yearly budget, money allocated to the home fund, money spent (manual expenses + maintenance costs), budget remaining and fund balance, monthly allocated-vs-spent chart, ledger with running balance.
 - **Budget → Forecast** – replacement forecast by year from purchase date + lifespan, suggested monthly allocation.
+- **Shopping list** – separate Groceries and Supplies lists. Quick-add parses quantities ("2 gal milk, bread, 6 eggs") and auto-sorts into aisles; tap to check off, "Done shopping" clears the cart and can log the total as a budget expense; one-tap "Buy again"; add parts straight from an inventory item; plain-text view for sharing.
 - **Schedule** – timed appointments (contractor, item, location) and reminders, with per-entry alert times; upcoming items on the dashboard and in the daily digest.
 - **Google Calendar sync** – tasks (all-day events that move when completed), appointments and reminders pushed to a Google calendar with alerts. One-way (Hearth → Google).
 - **Notifications** – daily digest of due/overdue tasks via [Apprise](https://github.com/caronc/apprise/wiki) (ntfy, Discord, email, Pushover, Gotify…).

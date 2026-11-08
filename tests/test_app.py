@@ -323,3 +323,77 @@ def test_notify_includes_appointments(client, monkeypatch):
     assert notify.run_check(date(2026, 6, 1)) == 1
     assert "📅 Plumber (tomorrow at 10:00)" in sent[0] and "Far away" not in sent[0]
     assert notify.run_check(date(2026, 6, 1)) == 0
+
+
+def _shop(client):
+    from app.db import get_db
+    with get_db() as db:
+        return {r["name"]: dict(r) for r in db.execute("SELECT * FROM shopping_items")}
+
+
+def test_shopping_quick_add_and_categories(client):
+    client.post("/shopping", data={"list": "groceries", "name": "2 gal milk, bread, 6 eggs, peanut butter"})
+    s = _shop(client)
+    assert s["milk"]["qty"] == "2 gal" and s["milk"]["category"] == "Dairy & Eggs"
+    assert s["eggs"]["qty"] == "6" and s["peanut butter"]["category"] == "Pantry"
+    client.post("/shopping", data={"list": "groceries", "name": "3 gal milk"})  # duplicate -> qty updated
+    s = _shop(client)
+    assert len(s) == 4 and s["milk"]["qty"] == "3 gal"
+    html = client.get("/shopping").text
+    import re
+    heads = re.findall(r'class="dayhead">([^<]+?) <span', html)
+    assert heads == ["Dairy &amp; Eggs", "Bakery", "Pantry"]  # store-layout order
+    client.post("/shopping", data={"list": "supplies", "name": "AA batteries", "category": "Other"})
+    assert _shop(client)["AA batteries"]["category"] == "Other"
+    assert "AA batteries" not in client.get("/shopping?list=groceries").text
+    assert client.post("/shopping", data={"list": "groceries", "name": "  "}).status_code == 400
+
+
+def test_shopping_check_clear_and_budget(client):
+    from app.main import balance_data
+    client.post("/shopping", data={"list": "groceries", "name": "milk, bread"})
+    r = client.post("/shopping/1/toggle", headers={"X-Requested-With": "fetch"})
+    assert r.status_code == 204 and _shop(client)["milk"]["status"] == "checked"
+    assert "In the cart" in client.get("/shopping").text
+    client.post("/shopping/2/toggle"); client.post("/shopping/2/toggle")  # check + uncheck
+    assert _shop(client)["bread"]["status"] == "needed"
+    client.post("/shopping/clear", data={"list": "groceries", "spent": "42.50", "store": "Aldi"})
+    s = _shop(client)
+    assert s["milk"]["status"] == "bought" and s["bread"]["status"] == "needed"
+    led = balance_data(date.today().year)["ledger"]
+    assert led[0]["amount"] == 42.5 and led[0]["note"] == "Groceries at Aldi (1 item)"
+    page = client.get("/shopping").text
+    assert "Buy again" in page and 'name="name" value="milk"' in page
+    client.post("/shopping/again", data={"list": "groceries", "name": "milk"})
+    client.post("/shopping/again", data={"list": "groceries", "name": "milk"})  # no dup
+    from app.db import get_db
+    with get_db() as db:
+        assert db.execute("SELECT COUNT(*) FROM shopping_items WHERE name='milk' AND status='needed'").fetchone()[0] == 1
+    client.post("/shopping/clear", data={"list": "groceries"})  # nothing checked, no expense
+    assert len(balance_data(date.today().year)["ledger"]) == 1
+
+
+def test_shopping_edit_delete_text_and_item_link(client):
+    client.post("/items", data={"name": "Furnace", "model": "59SC5"})
+    r = client.post("/shopping", data={"list": "supplies", "name": "20x25x1 filter", "qty": "2",
+                                       "item_id": "1", "next": "/items/1"}, follow_redirects=False)
+    assert r.headers["location"] == "/items/1"
+    assert "for Furnace" in client.get("/shopping?list=supplies").text
+    client.post("/shopping/1", data={"name": "20x25x4 filter", "qty": "1", "category": "Filters",
+                                     "price": "38", "store": "Home Depot"})
+    s = _shop(client)["20x25x4 filter"]
+    assert (s["qty"], s["price"], s["store"]) == ("1", 38.0, "Home Depot")
+    txt = client.get("/shopping/text?list=supplies").text
+    assert "Supplies list" in txt and "[ ] 20x25x4 filter (1)" in txt and "Filters" in txt
+    assert client.post("/shopping/1/delete", headers={"X-Requested-With": "fetch"}).status_code == 204
+    assert _shop(client) == {}
+    assert "On shopping list" in client.get("/").text
+
+
+def test_quick_parse_units():
+    from app.shopping import guess_category, parse_quick
+    assert parse_quick("2x eggs") == ("eggs", "2")
+    assert parse_quick("1.5 lb chicken") == ("chicken", "1.5 lb")
+    assert parse_quick("20x25x1 furnace filter") == ("20x25x1 furnace filter", None)
+    assert guess_category("water filter") == "Filters" and guess_category("ice cream") == "Frozen"
+    assert guess_category("mystery thing") == "Other"

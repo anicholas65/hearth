@@ -1,0 +1,14 @@
+<div class="row shop {{ 'done' if r.status == 'checked' }}">
+<form class="tgl inline" method="post" action="/shopping/{{ r.id }}/toggle"><button class="tick" aria-label="{{ 'Uncheck' if r.status == 'checked' else 'Check off' }} {{ r.name }}">{{ i('check') }}</button></form>
+<div class="grow"><span class="nm">{{ r.name }}</span>{% if r.qty %} <span class="badge acc">{{ r.qty }}</span>{% endif %}
+{% if r.status == 'needed' %}<details class="edit"><summary>Edit</summary>
+<form class="form pop" method="post" action="/shopping/{{ r.id }}">
+<label>Name<input name="name" value="{{ r.name }}" required></label><label>Qty<input name="qty" value="{{ r.qty or '' }}"></label>
+<label>Aisle<select name="category">{% for c in categories %}<option {{ 'selected' if c == r.category }}>{{ c }}</option>{% endfor %}</select></label>
+<label>Store<input name="store" list="stores" value="{{ r.store or '' }}"></label><label>Est. price<input name="price" type="number" step="0.01" value="{{ r.price|n }}"></label>
+<label>For item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == r.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>
+<label class="wide">Note<input name="note" value="{{ r.note or '' }}"></label><div class="wide"><button class="sm">Save</button></div></form></details>{% endif %}
+{% if r.note or r.store or r.item_name or r.price %}<small>{{ r.note or '' }}{% if r.note and r.store %} · {% endif %}{{ r.store or '' }}{% if r.item_name %} · <a href="/items/{{ r.item_id }}">for {{ r.item_name }}</a>{% endif %}{% if r.price %} · {{ money(r.price) }}{% endif %}</small>{% endif %}
+</div>
+<form class="del inline" method="post" action="/shopping/{{ r.id }}/delete"><button class="icon sm danger" title="Remove">{{ i('trash') }}</button></form>
+</div>

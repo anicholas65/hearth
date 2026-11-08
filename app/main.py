@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import gcal, notify
+from . import gcal, notify, shopping
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
 HERE = Path(__file__).parent
@@ -151,6 +151,8 @@ def dashboard(request: Request):
         items = db.execute("SELECT * FROM items").fetchall()
         counts = {t: db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                   for t in ("items", "tasks", "documents", "contractors")}
+        counts["shopping"] = db.execute(
+            "SELECT COUNT(*) FROM shopping_items WHERE status='needed'").fetchone()[0]
         recent = db.execute(
             "SELECT l.*, t.name AS task_name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
             "ORDER BY done_on DESC, l.id DESC LIMIT 5").fetchall()
@@ -342,6 +344,169 @@ def schedule_delete(bg: BackgroundTasks, appt_id: int):
     if r and r[0]:
         bg.add_task(gcal.delete_event, r[0])
     return back("/schedule")
+
+
+# ---------- shopping list ----------
+
+def list_key(v: str | None) -> str:
+    return v if v in shopping.LISTS else "groceries"
+
+
+def now_s() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+@app.get("/shopping")
+def shopping_page(request: Request, list: str = "groceries"):
+    lk = list_key(list)
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT s.*, i.name AS item_name FROM shopping_items s LEFT JOIN items i ON i.id=s.item_id "
+            "WHERE list=? AND status IN ('needed','checked') ORDER BY s.added_at, s.id", (lk,)).fetchall()
+        counts = dict(db.execute(
+            "SELECT list, COUNT(*) FROM shopping_items WHERE status='needed' GROUP BY list").fetchall())
+        on_list = {r["name"].lower() for r in rows}
+        frequent = [r for r in db.execute(
+            "SELECT name, COUNT(*) AS n, MAX(bought_at) AS last FROM shopping_items "
+            "WHERE list=? AND status='bought' GROUP BY lower(name) ORDER BY n DESC, last DESC LIMIT 24",
+            (lk,)).fetchall() if r["name"].lower() not in on_list][:16]
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+        stores = [r[0] for r in db.execute(
+            "SELECT DISTINCT store FROM shopping_items WHERE store IS NOT NULL ORDER BY store")]
+    needed = [r for r in rows if r["status"] == "needed"]
+    checked = [r for r in rows if r["status"] == "checked"]
+    order = {c: n for n, c in enumerate(shopping.CATEGORY_NAMES)}
+    groups: dict[str, list] = {}
+    for r in sorted(needed, key=lambda r: (order.get(r["category"] or "Other", 99), r["name"].lower())):
+        groups.setdefault(r["category"] or "Other", []).append(r)
+    est = sum(r["price"] or 0 for r in needed)
+    return render(request, "shopping.html", lst=lk, lists=shopping.LISTS, groups=groups,
+                  checked=checked, counts=counts, frequent=frequent, items=items, stores=stores,
+                  categories=shopping.CATEGORY_NAMES, est=est, n_needed=len(needed))
+
+
+def _done(request: Request, url: str):
+    if request.headers.get("x-requested-with") == "fetch":
+        return Response(status_code=204)
+    return back(url)
+
+
+@app.post("/shopping")
+async def shopping_add(request: Request):
+    f = await request.form()
+    lk = list_key(f.get("list"))
+    raw = blank(f.get("name"))
+    if not raw:
+        raise HTTPException(400, "name required")
+    nxt = f.get("next") or f"/shopping?list={lk}"
+    added = 0
+    with get_db() as db:
+        # one item per line or comma, so a whole list can be pasted at once
+        for part in [p for chunk in raw.splitlines() for p in chunk.split(",")]:
+            if not part.strip():
+                continue
+            name, qty = shopping.parse_quick(part)
+            qty = blank(f.get("qty")) or qty
+            cat = blank(f.get("category")) or shopping.guess_category(name, lk)
+            dup = db.execute("SELECT id FROM shopping_items WHERE list=? AND status='needed' "
+                             "AND lower(name)=lower(?)", (lk, name)).fetchone()
+            if dup:  # already on the list: just refresh qty/note
+                db.execute("UPDATE shopping_items SET qty=COALESCE(?, qty), note=COALESCE(?, note) "
+                           "WHERE id=?", (qty, blank(f.get("note")), dup[0]))
+                continue
+            db.execute(
+                "INSERT INTO shopping_items (list, name, qty, category, store, note, price, item_id, added_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (lk, name, qty, cat, blank(f.get("store")), blank(f.get("note")), num(f.get("price")),
+                 num(f.get("item_id"), int), now_s()))
+            added += 1
+    return back(nxt if nxt.startswith("/") else f"/shopping?list={lk}")
+
+
+@app.post("/shopping/again")
+def shopping_again(list: str = Form(...), name: str = Form(...)):
+    lk = list_key(list)
+    with get_db() as db:
+        last = db.execute("SELECT * FROM shopping_items WHERE list=? AND lower(name)=lower(?) "
+                          "ORDER BY bought_at DESC, id DESC LIMIT 1", (lk, name)).fetchone()
+        on = db.execute("SELECT 1 FROM shopping_items WHERE list=? AND status='needed' "
+                        "AND lower(name)=lower(?)", (lk, name)).fetchone()
+        if not on:
+            db.execute(
+                "INSERT INTO shopping_items (list, name, qty, category, store, price, item_id, added_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (lk, last["name"] if last else name, last["qty"] if last else None,
+                 (last["category"] if last else None) or shopping.guess_category(name, lk),
+                 last["store"] if last else None, last["price"] if last else None,
+                 last["item_id"] if last else None, now_s()))
+    return back(f"/shopping?list={lk}")
+
+
+@app.post("/shopping/{sid:int}/toggle")
+def shopping_toggle(request: Request, sid: int):
+    with get_db() as db:
+        r = db.execute("SELECT list, status FROM shopping_items WHERE id=?", (sid,)).fetchone()
+        if not r:
+            raise HTTPException(404)
+        new = "needed" if r["status"] == "checked" else "checked"
+        db.execute("UPDATE shopping_items SET status=?, checked_at=? WHERE id=?",
+                   (new, now_s() if new == "checked" else None, sid))
+    return _done(request, f"/shopping?list={r['list']}")
+
+
+@app.post("/shopping/{sid:int}")
+def shopping_edit(sid: int, name: str = Form(...), qty: str = Form(None), category: str = Form(None),
+                  store: str = Form(None), note: str = Form(None), price: str = Form(None),
+                  item_id: str = Form(None)):
+    with get_db() as db:
+        r = db.execute("SELECT list FROM shopping_items WHERE id=?", (sid,)).fetchone()
+        if not r:
+            raise HTTPException(404)
+        db.execute("UPDATE shopping_items SET name=?, qty=?, category=?, store=?, note=?, price=?, "
+                   "item_id=? WHERE id=?",
+                   (name.strip(), blank(qty), blank(category) or shopping.guess_category(name),
+                    blank(store), blank(note), num(price), num(item_id, int), sid))
+    return back(f"/shopping?list={r['list']}")
+
+
+@app.post("/shopping/{sid:int}/delete")
+def shopping_delete(request: Request, sid: int):
+    with get_db() as db:
+        r = db.execute("SELECT list FROM shopping_items WHERE id=?", (sid,)).fetchone()
+        db.execute("DELETE FROM shopping_items WHERE id=?", (sid,))
+    return _done(request, f"/shopping?list={r['list'] if r else 'groceries'}")
+
+
+@app.post("/shopping/clear")
+def shopping_clear(list: str = Form(...), spent: str = Form(None), store: str = Form(None)):
+    lk = list_key(list)
+    ts = now_s()
+    with get_db() as db:
+        n = db.execute("UPDATE shopping_items SET status='bought', bought_at=? "
+                       "WHERE list=? AND status='checked'", (ts, lk)).rowcount
+        amt = num(spent)
+        if amt and amt > 0:
+            where = f" at {blank(store)}" if blank(store) else ""
+            db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note) VALUES (?,?,?,?)",
+                       (ts[:10], "expense", amt,
+                        f"{shopping.LISTS[lk]}{where} ({n} item{'s' if n != 1 else ''})"))
+    return back(f"/shopping?list={lk}")
+
+
+@app.get("/shopping/text")
+def shopping_text(list: str = "groceries"):
+    lk = list_key(list)
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM shopping_items WHERE list=? AND status='needed'", (lk,)).fetchall()
+    order = {c: n for n, c in enumerate(shopping.CATEGORY_NAMES)}
+    out, cat = [f"{shopping.LISTS[lk]} list"], None
+    for r in sorted(rows, key=lambda r: (order.get(r["category"] or "Other", 99), r["name"].lower())):
+        if r["category"] != cat:
+            cat = r["category"]
+            out.append(f"\n{cat or 'Other'}")
+        out.append(f"[ ] {r['name']}" + (f" ({r['qty']})" if r["qty"] else "")
+                   + (f" - {r['note']}" if r["note"] else ""))
+    return Response("\n".join(out) + "\n", media_type="text/plain; charset=utf-8")
 
 
 # ---------- rooms & items ----------
