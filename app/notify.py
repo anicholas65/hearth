@@ -25,7 +25,10 @@ def send(title: str, body: str) -> bool:
     return bool(ap.notify(title=title, body=body))
 
 
-def due_digest(today: date | None = None) -> tuple[list[int], list[int], str]:
+WARRANTY_DAYS = 30
+
+
+def due_digest(today: date | None = None) -> tuple[list[int], list[int], str, list[int]]:
     """Tasks due within NOTIFY_LEAD_DAYS and appointments today/tomorrow not yet notified today."""
     today = today or date.today()
     lead = int(os.environ.get("NOTIFY_LEAD_DAYS", "3"))
@@ -43,6 +46,12 @@ def due_digest(today: date | None = None) -> tuple[list[int], list[int], str]:
             "AND (last_notified IS NULL OR last_notified < ?) ORDER BY starts_at",
             (today.isoformat(), tomorrow, today.isoformat()),
         ).fetchall()
+        # each warranty alerts once per expiry date
+        wars = db.execute(
+            "SELECT id, name, warranty_until FROM items WHERE warranty_until BETWEEN ? AND ? "
+            "AND (warranty_notified IS NULL OR warranty_notified != warranty_until) ORDER BY warranty_until",
+            (today.isoformat(), (today + timedelta(days=WARRANTY_DAYS)).isoformat()),
+        ).fetchall()
     lines = []
     for a in appts:
         when = "today" if a["starts_at"][:10] == today.isoformat() else "tomorrow"
@@ -52,13 +61,16 @@ def due_digest(today: date | None = None) -> tuple[list[int], list[int], str]:
     for r in rows:
         tag = "OVERDUE" if r["next_due"] < today.isoformat() else "due"
         lines.append(f"- {r['name']} ({tag} {r['next_due']})")
-    return [r["id"] for r in rows], [a["id"] for a in appts], "\n".join(lines)
+    for w in wars:
+        days = (date.fromisoformat(w["warranty_until"]) - today).days
+        lines.append(f"🛡 {w['name']} warranty ends in {days} day{'s' if days != 1 else ''} ({w['warranty_until']})")
+    return [r["id"] for r in rows], [a["id"] for a in appts], "\n".join(lines), [w["id"] for w in wars]
 
 
 def run_check(today: date | None = None) -> int:
     today = today or date.today()
-    tids, aids, body = due_digest(today)
-    n = len(tids) + len(aids)
+    tids, aids, body, wids = due_digest(today)
+    n = len(tids) + len(aids) + len(wids)
     if not n or not send(f"Hearth: {n} upcoming item(s)", body):
         return 0
     with get_db() as db:
@@ -66,6 +78,8 @@ def run_check(today: date | None = None) -> int:
                        [(today.isoformat(), i) for i in tids])
         db.executemany("UPDATE appointments SET last_notified = ? WHERE id = ?",
                        [(today.isoformat(), i) for i in aids])
+        db.executemany("UPDATE items SET warranty_notified = warranty_until WHERE id = ?",
+                       [(i,) for i in wids])
     return n
 
 

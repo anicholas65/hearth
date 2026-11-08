@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_macros.html" import i, empty %}
+{% block title %}Search{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Search</h1>{% if q %}<p>{{ total }} result{{ 's' if total != 1 }} for “{{ q }}”</p>{% endif %}</div></div>
+<form action="/search" class="qa-row" style="margin-bottom:18px"><input name="q" value="{{ q }}" placeholder="Search items, tasks, documents, contractors…" autofocus autocomplete="off"><button>{{ i('search') }} Search</button></form>
+{% if groups %}<div class="grid">{% for g in groups %}<section class="card">{% from "_macros.html" import head %}{{ head(g.label, g.icon, '<span class="badge">' ~ g.rows|length ~ '</span>') }}<div class="card-b">
+{% for r in g.rows %}<a class="sr-row" href="{{ r.href }}"><div class="dot">{{ i(g.icon) }}</div><div><b>{{ r.title|cap|hl(q) }}</b>{% if r.sub %}<small>{{ r.sub|hl(q) }}</small>{% endif %}</div></a>{% endfor %}
+</div></section>{% endfor %}</div>
+{% elif q %}<section class="card"><div class="card-b">{% call empty('search', 'Nothing matches “' ~ q ~ '”. Try a brand, room, model number or contractor name.') %}{% endcall %}</div></section>
+{% else %}<p class="muted">Search across inventory (name, brand, model, serial, room), tasks, schedule, documents, contractors, shopping, photo captions and budget notes. Press <kbd>/</kbd> anywhere to jump here.</p>{% endif %}
+{% endblock %}

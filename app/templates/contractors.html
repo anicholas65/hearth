@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
 {% block title %}Contractors{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Contractors</h1><p>Your trusted pros and what you've spent with them.</p></div></div>
-<section class="card accent">{{ head('Add contractor', 'plus') }}<div class="card-b"><form class="form" method="post" action="/contractors">
+<section class="card accent" id="new">{{ head('Add contractor', 'plus') }}<div class="card-b"><form class="form" method="post" action="/contractors">
 <label>Name<input name="name" required></label><label>Trade<input name="trade" placeholder="Plumber" list="trades"></label>
 <datalist id="trades">{% for t in ['Plumber','Electrician','HVAC','Roofer','Handyman','Landscaper','Pest control','Appliance repair','Painter'] %}<option value="{{ t }}">{% endfor %}</datalist>
 <label>Phone<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label><label>Notes<input name="notes"></label><button>{{ i('plus') }} Add</button></form></div></section>
@@ -9,7 +9,7 @@
 <div class="tile"><div class="body" style="padding:16px">
 <div style="display:flex;gap:12px;align-items:center">
 <div class="dot" style="width:48px;height:48px;border-radius:50%;font-weight:700;font-size:17px">{{ (c.name.split()|map('first')|join)[:2]|upper }}</div>
-<div style="min-width:0"><b>{{ c.name }}</b><br>{% if c.trade %}<span class="badge acc">{{ c.trade }}</span>{% endif %}</div></div>
+<div style="min-width:0"><a href="/contractors/{{ c.id }}" style="color:var(--fg);text-decoration:none"><b>{{ c.name }}</b></a><br>{% if c.trade %}<span class="badge acc">{{ c.trade }}</span>{% endif %}</div></div>
 {% if c.notes %}<span class="muted" style="font-size:13px">{{ c.notes }}</span>{% endif %}
 <div style="display:flex;flex-direction:column;gap:3px;font-size:14px">
 {% if c.phone %}<a href="tel:{{ c.phone }}">{{ i('phone') }} {{ c.phone }}</a>{% endif %}{% if c.email %}<a href="mailto:{{ c.email }}" style="overflow-wrap:anywhere">{{ i('mail') }} {{ c.email }}</a>{% endif %}</div>

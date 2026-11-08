@@ -1,63 +1,58 @@
-{% extends "base.html" %}{% from "_macros.html" import i, due as fmtdue, money, head, empty %}
-{% block title %}Dashboard{% endblock %}{% block content %}
-<section class="hero">
-<div><h1>{{ greeting }}</h1>
-<p>{% if overdue %}{{ overdue }} task{{ 's' if overdue != 1 }} overdue, {{ due|length - overdue }} more due in the next two weeks.
-{% elif due %}{{ due|length }} task{{ 's' if due|length != 1 }} coming up in the next two weeks.
-{% elif counts["tasks"] %}Everything's on track. Nothing due for two weeks.{% else %}Let's set up your home. Start with some maintenance tasks.{% endif %}</p>
-<div class="actions"><a class="btn" href="/tasks">{{ i('wrench') }} Maintenance</a><a class="btn ghost" href="/schedule">{{ i('calendar') }} Schedule</a><a class="btn ghost" href="/items">{{ i('plus') }} Add item</a></div></div>
-<svg class="art" viewBox="0 0 280 190" aria-hidden="true">
-<circle cx="226" cy="44" r="22" fill="var(--accent-2)" opacity=".35"/><circle cx="226" cy="44" r="13" fill="var(--accent-2)" opacity=".7"/>
-<ellipse cx="140" cy="182" rx="150" ry="16" fill="var(--accent)" opacity=".14"/>
-<g fill="var(--accent)" opacity=".22"><circle cx="40" cy="128" r="28"/><circle cx="58" cy="108" r="22"/><circle cx="26" cy="104" r="18"/></g>
-<rect x="40" y="132" width="6" height="46" rx="2" fill="var(--accent)" opacity=".35"/>
-<rect x="164" y="40" width="16" height="40" rx="2" fill="var(--line-strong)"/>
-<g opacity=".35" fill="none" stroke="var(--muted)" stroke-width="3" stroke-linecap="round"><path d="M172 34c-6-6 6-10 0-16"/><path d="M180 24c-5-5 5-8 0-13"/></g>
-<rect x="82" y="92" width="136" height="88" rx="5" fill="var(--card)" stroke="var(--line-strong)" stroke-width="2"/>
-<path d="M70 98 150 32 230 98" fill="var(--accent)" stroke="var(--accent)" stroke-width="8" stroke-linejoin="round"/>
-<path d="M150 46 92 94h116z" fill="var(--accent-2)" opacity=".45"/>
-<rect x="134" y="128" width="32" height="52" rx="16" fill="var(--accent)" opacity=".85"/><circle cx="159" cy="156" r="2.5" fill="var(--card)"/>
-<g fill="#ffcf6b" stroke="var(--line-strong)" stroke-width="2"><rect x="98" y="114" width="26" height="24" rx="3"/><rect x="176" y="114" width="26" height="24" rx="3"/></g>
-<path d="M111 114v24M98 126h26M189 114v24M176 126h26" stroke="var(--line-strong)" stroke-width="2"/>
-<circle cx="150" cy="74" r="9" fill="#ffcf6b" stroke="var(--card)" stroke-width="3"/>
-</svg></section>
+{% extends "base.html" %}{% from "_macros.html" import i, money, head %}
+{% block title %}Home{% endblock %}{% block content %}
+<div class="home-hero"><div><div class="eyebrow">Your home, organized</div><h1>{{ greeting }}</h1>
+<p>{% if att.overdue or att.due_week or att.today_events or att.warranties %}Here's what needs your attention.{% else %}Everything's on track. Nothing needs you right now.{% endif %}</p></div></div>
 
-<div class="stats">
-<a class="stat" href="/tasks"><div class="ic">{{ i('wrench') }}</div><div><b>{{ counts["tasks"] }}</b><span>Maintenance tasks</span></div></a>
-<a class="stat" href="/items"><div class="ic">{{ i('box') }}</div><div><b>{{ counts["items"] }}</b><span>Inventory items</span></div></a>
-<a class="stat" href="/documents"><div class="ic">{{ i('file') }}</div><div><b>{{ counts["documents"] }}</b><span>Documents</span></div></a>
-<a class="stat" href="/shopping"><div class="ic">{{ i('cart') }}</div><div><b>{{ counts["shopping"] }}</b><span>On shopping list</span></div></a>
-<a class="stat" href="/contractors"><div class="ic">{{ i('users') }}</div><div><b>{{ counts["contractors"] }}</b><span>Contractors</span></div></a>
+<div class="att">
+{% if att.overdue %}<a class="bad" href="/tasks"><span class="lbl">Overdue</span><b>{{ att.overdue }}</b><span class="s">maintenance task{{ 's' if att.overdue != 1 }}</span></a>{% endif %}
+{% if att.due_week %}<a href="/tasks"><span class="lbl">Maintenance</span><b>{{ att.due_week }}</b><span class="s">due this week</span></a>{% endif %}
+{% if att.today_events %}<a href="/schedule"><span class="lbl">Schedule</span><b>{{ att.today_events }}</b><span class="s">event{{ 's' if att.today_events != 1 }} today</span></a>{% endif %}
+{% if att.warranties %}<a href="#upnext"><span class="lbl">Warranties</span><b>{{ att.warranties }}</b><span class="s">ending soon</span></a>{% endif %}
+{% if nav_counts.shopping %}<a href="/shopping"><span class="lbl">Shopping</span><b>{{ nav_counts.shopping }}</b><span class="s">item{{ 's' if nav_counts.shopping != 1 }} to get</span></a>{% endif %}
+{% if not (att.overdue or att.due_week or att.today_events or att.warranties or nav_counts.shopping) %}<a class="calm" href="/tasks"><span class="dot ok">{{ i('check') }}</span><span><b>All caught up</b><br><span class="s">No overdue tasks, nothing scheduled today.</span></span></a>{% endif %}
 </div>
 
-<div class="grid">
-<section class="card accent">{{ head('Due in the next 2 weeks', 'calendar') }}<div class="card-b">
-{% if due %}<div class="list">{% for t in due %}<div class="row">
-<div class="dot {{ 'bad' if t.next_due < today else 'warn' if t.next_due == today }}">{{ i('wrench') }}</div>
-<div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name }}</a><small>{{ t.item_name or 'Every ' ~ t.interval_days ~ ' days' }}</small></div>
-{{ fmtdue(t.next_due, today) }}
-<form class="inline" method="post" action="/tasks/{{ t.id }}/done"><button class="sm ghost" title="Mark done">{{ i('check') }}</button></form></div>{% endfor %}</div>
-{% elif counts["tasks"] == 0 %}{% call empty('wrench', 'No maintenance tasks yet.') %}<form method="post" action="/tasks/seed"><button class="sm">{{ i('plus') }} Add common home tasks</button></form>{% endcall %}
-{% else %}{% call empty('check', 'All caught up.') %}{% endcall %}{% endif %}</div></section>
+<div class="qa" aria-label="Quick actions">
+<form method="post" action="/photos" enctype="multipart/form-data" style="display:contents"><input type="hidden" name="next" value="photo">
+<label>{{ i('camera') }} Capture<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" hidden></label></form>
+<a href="/tasks#new">{{ i('wrench') }} New task</a>
+<a href="/items#add">{{ i('box') }} Add item</a>
+<a href="/schedule#new">{{ i('calendar') }} Appointment</a>
+<a href="/shopping#new">{{ i('cart') }} Shopping list</a>
+</div>
 
-{% if appts %}<section class="card">{{ head('Coming up', 'calendar', '<a class="badge acc" href="/schedule">Schedule</a>') }}<div class="card-b"><div class="list">
-{% for a in appts %}<div class="row"><div class="dot {{ 'warn' if a.kind == 'reminder' }}">{{ i('bell' if a.kind == 'reminder' else 'calendar') }}</div>
-<div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title }}</a><small>{{ a.starts_at|nicedate }} · {{ 'All day' if a.all_day else a.starts_at|nicetime }}{% if a.contractor_name %} · {{ a.contractor_name }}{% endif %}</small></div></div>{% endfor %}
+<div class="home-grid">
+<section class="card" id="upnext">{{ head('Up next', 'clock', '<a class="badge" href="/schedule">Schedule</a>') }}<div class="card-b">
+{% if buckets %}{% for bucket, events in buckets.items() %}<div class="tl-group {{ 'bad' if bucket == 'Overdue' }}">{{ bucket }}</div>
+{% for e in events %}<div class="tl {{ e.kind }} {{ 'overdue' if e.overdue }}">
+<div class="kind">{{ i({'task':'wrench','appointment':'calendar','reminder':'bell','warranty':'shield'}[e.kind]) }}</div>
+<div class="grow"><a href="{{ e.href }}">{{ e.title|cap }}</a><small>{{ e.date.isoformat()|nicedate }}{% if e.time %} · {{ e.time|nicetime }}{% endif %}{% if e.sub %} · {{ e.sub }}{% endif %}</small></div>
+{% if e.kind == 'task' %}<form method="post" action="/tasks/{{ e.id }}/done" class="inline"><button class="sm ghost" title="Mark done">{{ i('check') }}<span class="hide-sm">Done</span></button></form>{% endif %}
+</div>{% endfor %}{% endfor %}
+{% else %}<div class="empty">{{ i('check') }}<div><b>Nothing coming up in the next two weeks.</b><br>Add a task or appointment and it will show here.</div></div>{% endif %}
+</div></section>
+
+<div>
+{% if show_setup %}<section class="card">{{ head('Get started', 'star', '<form method="post" action="/setup/dismiss" class="inline"><button class="sm ghost" style="padding:2px 8px">Hide</button></form>') }}<div class="card-b">
+<div class="progress"><i style="width:{{ (steps_done / steps|length * 100)|round }}%"></i></div>
+<p class="muted" style="margin:0 0 6px;font-size:13px">{{ steps_done }} of {{ steps|length }} done</p>
+<div class="steps2">{% for st in steps %}<a href="{{ st.href }}" class="{{ 'done' if st.done }}"><span class="ck">{{ i('check') }}</span><span><b>{{ st.title }}</b>{% if not st.done %}<small>{{ st.hint }}</small>{% endif %}</span></a>{% endfor %}</div>
+</div></section>{% endif %}
+
+{% if shop %}<section class="card">{{ head('Shopping list', 'cart', '<a class="badge" href="/shopping">Open</a>') }}<div class="card-b">
+<div class="chips">{% for s in shop %}<a class="chip" href="/shopping?list={{ s.list }}" style="text-decoration:none">{{ s.name|cap }}</a>{% endfor %}{% if nav_counts.shopping > shop|length %}<a class="chip" href="/shopping" style="text-decoration:none">+{{ nav_counts.shopping - shop|length }} more</a>{% endif %}</div>
+</div></section>{% endif %}
+
+{% if insights %}<section class="card">{{ head('Home insights', 'trend') }}<div class="card-b"><div class="ins">
+<div><b>{{ insights.done90 }}</b><span>tasks done, last 90 days</span></div>
+<div><b>{{ (insights.on_track_pct ~ '%') if insights.on_track_pct is not none else '—' }}</b><span>of tasks on schedule</span></div>
+<div><b>{{ money(insights.spend) if insights.spend else '$0' }}</b><span>spent on the house in {{ insights.year }}</span></div>
+<div><b>{{ money(insights.repl) if insights.repl else '$0' }}</b><span>replacements due by {{ insights.year + 2 }}</span></div>
 </div></div></section>{% endif %}
-<section class="card">{{ head('Warranties expiring', 'shield') }}<div class="card-b">
-{% if warranties %}<div class="list">{% for w in warranties %}<div class="row">
-{% if w.cover is defined and w.cover %}<img class="thumb" src="/photos/{{ w.cover }}/thumb" alt="">{% else %}<div class="dot warn">{{ i('shield') }}</div>{% endif %}
-<div class="grow"><a href="/items/{{ w.id }}">{{ w.name }}</a><small>{{ w.brand or '' }} {{ w.model or '' }}</small></div><span class="badge warn">{{ w.warranty_until }}</span></div>{% endfor %}</div>
-{% else %}{% call empty('shield', 'Nothing expiring in the next 60 days.') %}{% endcall %}{% endif %}</div></section>
 
-<section class="card">{{ head('Replacements due by ' ~ (today[:4]|int + 2), 'trend') }}<div class="card-b">
-{% if upcoming %}<div class="list">{% for y, it in upcoming %}<div class="row">
-<div class="dot {{ 'bad' if y <= today[:4]|int }}">{{ i('box') }}</div>
-<div class="grow"><a href="/items/{{ it.id }}">{{ it.name }}</a><small>{{ y }}</small></div><b>{{ money(it.replace_cost) }}</b></div>{% endfor %}</div>
-{% else %}{% call empty('trend', 'Add purchase date + lifespan to items to forecast replacements.') %}{% endcall %}{% endif %}</div></section>
-
-<section class="card">{{ head('Recently completed', 'clock') }}<div class="card-b">
-{% if recent %}<div class="list">{% for l in recent %}<div class="row"><div class="dot ok">{{ i('check') }}</div>
-<div class="grow"><a href="/tasks/{{ l.task_id }}">{{ l.task_name }}</a><small>{{ l.done_on }}</small></div><span>{{ money(l.cost) }}</span></div>{% endfor %}</div>
-{% else %}{% call empty('clock', 'No history yet.') %}{% endcall %}{% endif %}</div></section>
-</div>{% endblock %}
+{% if recent %}<section class="card">{{ head('Recently done', 'check') }}<div class="card-b"><div class="list">
+{% for l in recent %}<div class="row"><div class="dot ok">{{ i('check') }}</div><div class="grow"><a href="/tasks/{{ l.task_id }}">{{ l.task_name|cap }}</a><small>{{ l.done_on|nicedate }}</small></div>{% if l.cost %}<span>{{ money(l.cost) }}</span>{% endif %}</div>{% endfor %}
+</div></div></section>{% endif %}
+</div>
+</div>
+{% endblock %}

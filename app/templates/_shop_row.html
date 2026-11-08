@@ -1,6 +1,6 @@
 <div class="row shop {{ 'done' if r.status == 'checked' }}">
 <form class="tgl inline" method="post" action="/shopping/{{ r.id }}/toggle"><button class="tick" aria-label="{{ 'Uncheck' if r.status == 'checked' else 'Check off' }} {{ r.name }}">{{ i('check') }}</button></form>
-<div class="grow"><span class="nm">{{ r.name }}</span>{% if r.qty %} <span class="badge acc">{{ r.qty }}</span>{% endif %}
+<div class="grow"><span class="nm">{{ r.name|cap }}</span>{% if r.qty %} <span class="badge acc">{{ r.qty }}</span>{% endif %}
 {% if r.status == 'needed' %}<details class="edit"><summary>Edit</summary>
 <form class="form pop" method="post" action="/shopping/{{ r.id }}">
 <label>Name<input name="name" value="{{ r.name }}" required></label><label>Qty<input name="qty" value="{{ r.qty or '' }}"></label>

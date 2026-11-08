@@ -110,6 +110,7 @@ CREATE INDEX IF NOT EXISTS shopping_status ON shopping_items(list, status);
 MIGRATIONS = [
     ("photos", "caption", "ALTER TABLE photos ADD COLUMN caption TEXT"),
     ("tasks", "gcal_event_id", "ALTER TABLE tasks ADD COLUMN gcal_event_id TEXT"),
+    ("items", "warranty_notified", "ALTER TABLE items ADD COLUMN warranty_notified TEXT"),
 ]
 
 

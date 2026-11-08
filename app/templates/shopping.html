@@ -3,7 +3,7 @@
 <div class="page-head"><div><h1>Shopping list</h1><p>{{ n_needed }} item{{ 's' if n_needed != 1 }} to get{% if est %} · about {{ money(est) }}{% endif %}</p></div>
 <div class="tabs" role="tablist" aria-label="Lists">{% for k, label in lists.items() %}<a href="/shopping?list={{ k }}" class="{{ 'on' if k == lst }}">{{ i('cart' if k == 'groceries' else 'wrench') }} {{ label }}{% if counts.get(k) %} <span class="badge acc">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</div></div>
 
-<section class="card accent"><div class="card-b">
+<section class="card accent" id="new"><div class="card-b" style="padding-top:18px">
 <form method="post" action="/shopping" class="quickadd"><input type="hidden" name="list" value="{{ lst }}">
 <div class="qa-row"><input name="name" required autocomplete="off" autofocus enterkeyhint="done"
   placeholder="{{ 'Add items: 2 gal milk, bread, 6 eggs' if lst == 'groceries' else 'Add supplies: AA batteries, 20x25x1 filter, caulk' }}">

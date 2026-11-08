@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
+{% block title %}{{ c.name }}{% endblock %}{% block content %}
+<a class="crumb" href="/contractors">{{ i('back') }} Contractors</a>
+<section class="card"><div class="card-b" style="padding-top:20px"><div class="about-row">
+<div class="dot" style="width:64px;height:64px;border-radius:50%;font-size:22px;font-weight:700">{{ (c.name.split()|map('first')|join)[:2]|upper }}</div>
+<div style="flex:1;min-width:0"><h1 style="margin:0">{{ c.name }}</h1>
+<p class="muted" style="margin:4px 0 0">{% if c.trade %}<span class="badge acc">{{ c.trade }}</span> {% endif %}{{ c.notes or '' }}</p>
+<div class="actions" style="margin-top:14px">
+{% if c.phone %}<a class="btn sm" href="tel:{{ c.phone }}">{{ i('phone') }} {{ c.phone }}</a>{% endif %}
+{% if c.email %}<a class="btn ghost sm" href="mailto:{{ c.email }}">{{ i('mail') }} Email</a>{% endif %}
+<a class="btn ghost sm" href="/schedule?contractor={{ c.id }}#new">{{ i('calendar') }} Book a visit</a></div></div></div></div></section>
+<div class="facts">
+<div><span>Jobs logged</span><b>{{ jobs|length }}</b></div>
+<div><span>Total spent</span><b>{{ money(spent) if spent else '$0' }}</b></div>
+<div><span>Last job</span><b>{{ jobs[0].d|nicedate if jobs else '—' }}</b></div>
+<div><span>Upcoming</span><b>{{ upcoming|length }}</b></div></div>
+<div class="home-grid"><div>
+<section class="card">{{ head('Work history', 'clock') }}<div class="card-b">
+{% if jobs or past %}<div class="list">{% for j in jobs %}<div class="row"><div class="dot ok">{{ i('check') }}</div>
+<div class="grow"><a href="/tasks/{{ j.task_id }}">{{ j.title|cap }}</a><small>{{ j.d|nicedate }}{% if j.item_name %} · <a href="/items/{{ j.item_id }}">{{ j.item_name }}</a>{% endif %}{% if j.notes %} · {{ j.notes }}{% endif %}</small></div>{% if j.cost %}<b>{{ money(j.cost) }}</b>{% endif %}</div>{% endfor %}
+{% for a in past %}<div class="row"><div class="dot">{{ i('calendar') }}</div><div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title|cap }}</a><small>{{ a.starts_at|nicedate }}{% if a.item_name %} · {{ a.item_name }}{% endif %}</small></div></div>{% endfor %}</div>
+{% else %}{% call empty('clock', 'No jobs yet. When you mark a task done, pick ' ~ c.name ~ ' as who did it.') %}{% endcall %}{% endif %}
+</div></section></div>
+<div>
+{% if upcoming %}<section class="card">{{ head('Booked', 'calendar') }}<div class="card-b"><div class="list">{% for a in upcoming %}<div class="row"><div class="dot">{{ i('calendar') }}</div><div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title|cap }}</a><small>{{ a.starts_at|nicedate }}{% if not a.all_day %} · {{ a.starts_at|nicetime }}{% endif %}</small></div></div>{% endfor %}</div></div></section>{% endif %}
+{% if items %}<section class="card">{{ head('Has worked on', 'box') }}<div class="card-b"><div class="chips">{% for iid, iname in items|sort(attribute=1) %}<a class="chip" href="/items/{{ iid }}" style="text-decoration:none">{{ i('box') }} {{ iname }}</a>{% endfor %}</div></div></section>{% endif %}
+<details class="card"><summary class="card-h" style="list-style:none;display:flex"><h2>{{ i('sliders') }} Edit contact</h2></summary><div class="card-b">
+<form class="form" method="post" action="/contractors/{{ c.id }}">
+<label>Name<input name="name" value="{{ c.name }}" required></label><label>Trade<input name="trade" value="{{ c.trade or '' }}"></label>
+<label>Phone<input name="phone" type="tel" value="{{ c.phone or '' }}"></label><label>Email<input name="email" type="email" value="{{ c.email or '' }}"></label>
+<label class="wide">Notes<input name="notes" value="{{ c.notes or '' }}"></label><div class="wide"><button>Save</button></div></form>
+<form method="post" action="/contractors/{{ c.id }}/delete" onsubmit="return confirm('Delete contractor? Their job history stays, unattributed.')" style="margin-top:12px"><button class="danger sm">{{ i('trash') }} Delete</button></form></div></details>
+</div></div>
+{% endblock %}

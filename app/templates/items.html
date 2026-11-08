@@ -22,7 +22,7 @@
 <a class="tile" href="/items/{{ it.id }}"><div class="ph">
 {% if it.cover %}<img src="/photos/{{ it.cover }}/thumb" alt="" loading="lazy">{% else %}<div class="placeholder">{{ i('box') }}</div>{% endif %}
 {% if it.warranty_until and it.warranty_until >= today %}<span class="corner badge glass">{{ i('shield') }} Warranty</span>{% endif %}</div>
-<div class="body"><b>{{ it.name }}</b><span class="muted" style="font-size:13px">{{ it.brand or '' }} {{ it.model or '' }}&nbsp;</span>
+<div class="body"><b>{{ it.name|cap }}</b><span class="muted" style="font-size:13px">{{ it.brand or '' }} {{ it.model or '' }}&nbsp;</span>
 <div class="meta">{% if it.room_name %}<span class="badge">{{ i('door') }} {{ it.room_name }}</span>{% else %}<span></span>{% endif %}<b>{{ money(it.price) }}</b></div></div></a>
 {% endfor %}</div>
 {% else %}<section class="card"><div class="card-b">{% call empty('box', 'No items here yet. Add your first one below.') %}{% endcall %}</div></section>{% endif %}

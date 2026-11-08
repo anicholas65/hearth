@@ -8,7 +8,22 @@
 <div class="actions">{% if photo.item_id %}<a class="badge acc" href="/items/{{ photo.item_id }}">{{ i('box') }} {{ photo.item_name }}</a>{% endif %}
 {% if photo.room_id %}<a class="badge acc" href="/items?room={{ photo.room_id }}">{{ i('door') }} {{ photo.room_name }}</a>{% endif %}
 <a class="btn ghost sm" href="/photos/{{ photo.id }}" download="hearth-photo-{{ photo.id }}.jpg">{{ i('download') }} Download</a></div></div></div></section>
-<section class="card accent">{{ head('Caption & filing', 'sliders') }}<div class="card-b">
+{% if not photo.item_id and not photo.room_id %}<section class="card" id="whatis">{{ head('What is this?' if request.query_params.get('new') else 'Turn this photo into a record', 'star') }}<div class="card-b"><div class="whatis">
+<form method="post" action="/gallery/{{ photo.id }}/to-item"><h3>{{ i('box') }} A new item</h3>
+<input name="name" required placeholder="Wine fridge" {{ 'autofocus' if request.query_params.get('new') }}>
+<select name="room_id"><option value="">Room (optional)</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
+<button>{{ i('plus') }} Create item</button></form>
+<form method="post" action="/gallery/{{ photo.id }}/to-receipt"><h3>{{ i('receipt') }} A receipt or document</h3>
+<input name="title" placeholder="Receipt: wine fridge, Best Buy">
+<select name="item_id"><option value="">For item (optional)</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select>
+<button class="ghost">{{ i('receipt') }} Save as document</button></form>
+<form method="post" action="/gallery/{{ photo.id }}"><h3>{{ i('link') }} Part of something I have</h3>
+<select name="item_id"><option value="">Item…</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select>
+<select name="room_id"><option value="">or Room…</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
+<input type="hidden" name="caption" value="{{ photo.caption or '' }}">
+<button class="ghost">{{ i('link') }} Attach</button></form>
+</div><p class="muted" style="margin:10px 0 0;font-size:13px">Or leave it unfiled; it stays in Photos.</p></div></section>{% endif %}
+<section class="card">{{ head('Caption & filing', 'sliders') }}<div class="card-b">
 <form class="form" method="post" action="/gallery/{{ photo.id }}">
 <label class="wide">Caption<input name="caption" value="{{ photo.caption or '' }}" placeholder="Water stain under kitchen sink"></label>
 <label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if it.id == photo.item_id }}>{{ it.name }}</option>{% endfor %}</select></label>

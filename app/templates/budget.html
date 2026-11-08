@@ -1,8 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
 {% block title %}Budget{% endblock %}{% block content %}
 {% macro signed(v) -%}{% if v is none %}<span class="muted">—</span>{% elif v < 0 %}−${{ "{:,.0f}".format(-v) }}{% else %}${{ "{:,.0f}".format(v) }}{% endif %}{%- endmacro %}
-<div class="page-head"><div><h1>Budget</h1><p>{{ 'Home fund: what you planned, set aside, spent, and what is left.' if view == 'balance' else "What's wearing out, when, and what to set aside." }}</p></div>
-<nav class="tabs" aria-label="Budget views" style="padding:4px;flex:none"><a href="/budget" class="{{ 'on' if view == 'balance' }}">{{ i('wallet') }} Balance</a><a href="/budget?view=forecast" class="{{ 'on' if view == 'forecast' }}">{{ i('trend') }} Forecast</a></nav></div>
+<div class="page-head"><div><h1>Budget</h1><p>{{ 'Home fund: what you planned, set aside, spent, and what is left.' if view == 'balance' else "What's wearing out, when, and what to set aside." }}</p></div></div>
 
 {% if view == 'balance' %}
 <div class="year-pick" style="margin-bottom:14px">{% for y in years %}<a class="badge {{ 'acc' if y == year }}" href="/budget?year={{ y }}">{{ y }}</a>{% endfor %}</div>
@@ -16,7 +15,7 @@
 </div>
 
 <div class="grid">
-<section class="card accent">{{ head(year ~ ' budget progress', 'calendar') }}<div class="card-b">
+<section class="card accent" id="budget">{{ head(year ~ ' budget progress', 'calendar') }}<div class="card-b">
 {% if budget %}
 {% set pa = (allocated / budget * 100) if budget else 0 %}{% set ps = (spent / budget * 100) if budget else 0 %}
 <div class="meter"><div class="lbl"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--s1);margin-right:6px"></i>Allocated</span><span><b>{{ money(allocated) if allocated else '$0' }}</b> of {{ money(budget) }} · {{ pa|round|int }}%</span></div>
@@ -29,7 +28,7 @@
 <label>{{ year }} budget<input name="amount" type="number" step="0.01" min="0" value="{{ budget|n if budget is not none else '' }}" placeholder="e.g. 6000"></label><button class="ghost">Save budget</button></form>
 </div></section>
 
-<section class="card">{{ head('Add to the ledger', 'plus') }}<div class="card-b">
+<section class="card" id="ledger">{{ head('Add to the ledger', 'plus') }}<div class="card-b">
 <form class="form" method="post" action="/budget/entries">
 <label>Type<select name="kind"><option value="allocation">Allocate (money in)</option><option value="expense">Expense (money out)</option></select></label>
 <label>Amount<input name="amount" type="number" step="0.01" min="0.01" required></label>

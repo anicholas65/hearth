@@ -4,13 +4,13 @@
 <div class="tabs"><a href="/schedule" class="{{ 'on' if not past }}">{{ i('calendar') }} Upcoming</a><a href="/schedule?past=1" class="{{ 'on' if past }}">{{ i('clock') }} Past</a></div></div>
 {% if not gcal_on %}<div class="card" style="border-style:dashed"><div class="card-b actions" style="justify-content:space-between">
 <span>{{ i('calendar') }} Connect Google Calendar to send appointments, tasks and reminders to your phone.</span><a class="btn ghost sm" href="/settings#google">Set up</a></div></div>{% endif %}
-<section class="card accent">{{ head('New appointment or reminder', 'plus') }}<div class="card-b">
+<section class="card accent" id="new">{{ head('New appointment or reminder', 'plus') }}<div class="card-b">
 <form class="form" method="post" action="/schedule">{% set a = None %}{% include "_appt_form.html" %}<div class="wide"><button>{{ i('plus') }} Add to schedule</button></div></form></div></section>
 <section class="card">{{ head('Past' if past else 'Upcoming', 'calendar', '<span class="badge acc">' ~ appts|length ~ '</span>') }}<div class="card-b">
 {% if appts %}<div class="list">{% for a in appts %}
 {% if loop.first or a.starts_at[:10] != loop.previtem.starts_at[:10] %}<div class="dayhead">{{ a.starts_at|nicedate }}</div>{% endif %}
 <div class="row"><div class="dot {{ 'warn' if a.kind == 'reminder' }}">{{ i('bell' if a.kind == 'reminder' else 'calendar') }}</div>
-<div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title }}</a>
+<div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title|cap }}</a>
 <small>{{ 'All day' if a.all_day else a.starts_at|nicetime }}{% if a.ends_at and not a.all_day %} – {{ a.ends_at|nicetime }}{% endif %}{% if a.contractor_name %} · {{ a.contractor_name }}{% endif %}{% if a.item_name %} · {{ a.item_name }}{% endif %}{% if a.location %} · {{ a.location }}{% endif %}</small></div>
 {% if a.contractor_phone %}<a class="btn ghost sm" href="tel:{{ a.contractor_phone }}" title="Call">{{ i('phone') }}</a>{% endif %}
 {% if gcal_on %}{% if a.gcal_event_id %}<span class="badge ok" title="In Google Calendar">{{ i('check') }} Google</span>{% else %}<span class="badge" title="Not yet in Google Calendar">{{ i('clock') }} Pending</span>{% endif %}{% endif %}

@@ -2,6 +2,17 @@
 
 Self-hosted home manager for Unraid: maintenance reminders, home inventory, photos, documents & manuals, contractors, and budgeting. FastAPI + SQLite, single container.
 
+## What's new in 2.0
+- **Simpler navigation**: four destinations (Home, Plan, Organize, Finances) with sub-tabs, plus a bottom tab bar on phones.
+- **Action-first home**: what needs attention, one "Up next" timeline (tasks, appointments, expiring warranties), quick actions, a setup checklist instead of empty counters, and home insights.
+- **Universal search** (press `/`) across items, tasks, schedule, documents, contractors, shopping, photos and budget notes.
+- **One "+ New" menu** for every record type, led by camera capture.
+- **Capture → record**: snap a photo, then turn it into a new item, a receipt, or attach it to something you own.
+- **Connected item pages**: receipts, warranty status, maintenance, history and costs, contractors, bookings, photos and supplies in one place. Contractor pages show their work history.
+- **Warranty-expiry alerts** in the daily digest.
+- **Backup & CSV**: one-click backup zip, CSV exports, and inventory CSV import.
+- **Hearth theme**: Pine, Copper, Sage and Cream, in light and dark mode.
+
 ## Features
 - **Maintenance** – recurring tasks with due dates, one-click "done", cost/contractor logging, full history. Seed with 12 common home tasks.
 - **Inventory** – rooms → items with brand/model/serial, purchase price, warranty, expected lifespan.

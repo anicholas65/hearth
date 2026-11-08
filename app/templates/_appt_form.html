@@ -1,4 +1,4 @@
-{% set k = a.kind if a else 'appointment' %}
+{% set k = a.kind if a else (new_kind if new_kind is defined else 'appointment') %}
 <div class="wide"><div class="seg" role="radiogroup" aria-label="Type">
 <label><input type="radio" name="kind" value="appointment" {{ 'checked' if k == 'appointment' }}>{{ i('calendar') }} Appointment</label>
 <label><input type="radio" name="kind" value="reminder" {{ 'checked' if k == 'reminder' }}>{{ i('bell') }} Reminder</label></div></div>
@@ -11,8 +11,8 @@
 {% set rm = a.remind_minutes if a else 60 %}
 {% for v, lbl in [('', 'Calendar default'), (0, 'At start time'), (10, '10 min before'), (30, '30 min before'), (60, '1 hour before'), (120, '2 hours before'), (1440, '1 day before'), (2880, '2 days before'), (10080, '1 week before')] %}
 <option value="{{ v }}" {{ 'selected' if (rm is none and v == '') or (rm is not none and v != '' and rm == v) }}>{{ lbl }}</option>{% endfor %}</select></label>
-<label class="apptf">Contractor<select name="contractor_id"><option value="">—</option>{% for c in contractors %}<option value="{{ c.id }}" {{ 'selected' if a and a.contractor_id == c.id }}>{{ c.name }}{{ ' (' ~ c.trade ~ ')' if c.trade }}</option>{% endfor %}</select></label>
-<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if a and a.item_id == it.id }}>{{ it.name }}</option>{% endfor %}</select></label>
+<label class="apptf">Contractor<select name="contractor_id"><option value="">—</option>{% for c in contractors %}<option value="{{ c.id }}" {{ 'selected' if (a and a.contractor_id == c.id) or (not a and new_contractor is defined and new_contractor == c.id) }}>{{ c.name }}{{ ' (' ~ c.trade ~ ')' if c.trade }}</option>{% endfor %}</select></label>
+<label>Item<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}" {{ 'selected' if (a and a.item_id == it.id) or (not a and new_item is defined and new_item == it.id) }}>{{ it.name }}</option>{% endfor %}</select></label>
 <label class="apptf">Location<input name="location" value="{{ (a.location or '') if a else '' }}" placeholder="Home"></label>
 <label class="wide">Notes<textarea name="notes" rows="2">{{ (a.notes or '') if a else '' }}</textarea></label>
 <script>

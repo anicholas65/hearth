@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import secrets
+import shutil
 import io
 import uuid
 from contextlib import asynccontextmanager
@@ -15,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import DEVELOPER, REPO_URL, __version__, gcal, notify, shopping
+from . import DEVELOPER, REPO_URL, __version__, backup, gcal, home, notify, shopping
+from . import search as search_mod
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
 HERE = Path(__file__).parent
@@ -39,6 +41,25 @@ def _nicetime(v: str | None) -> str:
 
 templates.env.filters["nicedate"] = _nicedate
 templates.env.filters["nicetime"] = _nicetime
+def _cap(v):
+    """Display titles with a leading capital without changing what was stored."""
+    return v[:1].upper() + v[1:] if isinstance(v, str) and v[:1].islower() else v
+
+
+templates.env.filters["cap"] = _cap
+
+
+def _hl(v, q):
+    """Escape, then wrap case-insensitive matches of q in <mark>."""
+    import re
+    from markupsafe import Markup, escape
+    text = str(escape(v or ""))
+    if q:
+        text = re.sub(re.escape(str(escape(q))), lambda m: f"<mark>{m.group(0)}</mark>", text, flags=re.I)
+    return Markup(text)
+
+
+templates.env.filters["hl"] = _hl
 templates.env.filters["n"] = lambda v: "" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
 
 DEFAULT_TASKS = [
@@ -105,10 +126,34 @@ def num(v: str | None, cast=float):
     return cast(v) if v is not None else None
 
 
-THEMES = {  # key: (label, hue, saturation)
-    "ember": ("Ember", 18, 62), "forest": ("Forest", 152, 42), "ocean": ("Ocean", 205, 68),
-    "plum": ("Plum", 275, 42), "rose": ("Rose", 345, 58), "slate": ("Slate", 215, 18),
+def _hsl_swatch(h, s):
+    return [f"hsl({h} {s}% 42%)", f"hsl({h + 28} {s}% 55%)", f"hsl({h} {s}% 90%)"]
+
+
+THEMES = {  # key: (label, swatch colours)
+    "hearth": ("Hearth", ["#365D4B", "#C68556", "#A8B9A2", "#F5F1E8"]),
+    "ember": ("Ember", _hsl_swatch(18, 62)), "forest": ("Forest", _hsl_swatch(152, 42)),
+    "ocean": ("Ocean", _hsl_swatch(205, 68)), "plum": ("Plum", _hsl_swatch(275, 42)),
+    "rose": ("Rose", _hsl_swatch(345, 58)), "slate": ("Slate", _hsl_swatch(215, 18)),
 }
+SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
+    "home": ("Home", "home", []),
+    "plan": ("Plan", "calendar", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar")]),
+    "organize": ("Organize", "box", [("/items", "Inventory", "box"), ("/shopping", "Shopping", "cart"),
+                                     ("/documents", "Documents", "file"), ("/gallery", "Photos", "camera"),
+                                     ("/contractors", "Contractors", "users")]),
+    "finances": ("Finances", "wallet", [("/budget", "Budget", "wallet"),
+                                        ("/budget?view=forecast", "Forecast", "trend")]),
+}
+
+
+def section_for(path: str) -> str | None:
+    if path == "/":
+        return "home"
+    for key, (_, _, pages) in SECTIONS.items():
+        if any(path.startswith(p.split("?")[0]) for p, _, _ in pages):
+            return key
+    return None
 MODES = ("auto", "light", "dark")
 
 
@@ -121,11 +166,23 @@ def render(request: Request, name: str, **ctx):
     ctx["today"] = date.today().isoformat()
     t = request.cookies.get("theme")
     m = request.cookies.get("mode")
-    ctx["theme"] = t if t in THEMES else "ember"
+    ctx["theme"] = t if t in THEMES else "hearth"
     ctx["mode"] = m if m in MODES else "auto"
     ctx["themes"] = THEMES
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
                      "repo": REPO_URL}
+    ctx["sections"] = SECTIONS
+    ctx["section"] = section_for(request.url.path)
+    path, q = request.url.path, request.url.query
+    full = path + (f"?{q}" if q else "")
+    pages = SECTIONS[ctx["section"]][2] if ctx["section"] else []
+    ctx["sub_active"] = next((p for p, _, _ in pages if "?" in p and full.startswith(p)), None) or \
+        next((p for p, _, _ in pages if "?" not in p and path.startswith(p)), None)
+    with get_db() as db:
+        ctx["nav_counts"] = {
+            "shopping": db.execute("SELECT COUNT(*) FROM shopping_items WHERE status='needed'").fetchone()[0],
+            "overdue": db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ?",
+                                  (ctx["today"],)).fetchone()[0]}
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -139,39 +196,35 @@ def replacement_year(item) -> int | None:
 
 @app.get("/")
 def dashboard(request: Request):
-    today = date.today()
-    soon = (today + timedelta(days=14)).isoformat()
-    warn = (today + timedelta(days=60)).isoformat()
+    events = home.timeline()
+    steps = home.setup_steps()
     with get_db() as db:
-        due = db.execute(
-            "SELECT t.*, i.name AS item_name FROM tasks t LEFT JOIN items i ON i.id=t.item_id "
-            "WHERE next_due <= ? ORDER BY next_due", (soon,)).fetchall()
-        warranties = db.execute(
-            "SELECT i.*, (SELECT id FROM photos p WHERE p.item_id=i.id ORDER BY is_cover DESC, id LIMIT 1) AS cover "
-            "FROM items i WHERE warranty_until BETWEEN ? AND ? ORDER BY warranty_until",
-            (today.isoformat(), warn)).fetchall()
-        items = db.execute("SELECT * FROM items").fetchall()
-        counts = {t: db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-                  for t in ("items", "tasks", "documents", "contractors")}
-        counts["shopping"] = db.execute(
-            "SELECT COUNT(*) FROM shopping_items WHERE status='needed'").fetchone()[0]
         recent = db.execute(
             "SELECT l.*, t.name AS task_name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
-            "ORDER BY done_on DESC, l.id DESC LIMIT 5").fetchall()
-        appts = db.execute(
-            "SELECT a.*, c.name AS contractor_name FROM appointments a "
-            "LEFT JOIN contractors c ON c.id=a.contractor_id "
-            "WHERE substr(starts_at,1,10) BETWEEN ? AND ? ORDER BY starts_at LIMIT 6",
-            (today.isoformat(), soon)).fetchall()
-    horizon = today.year + 2
-    upcoming = sorted(
-        [(replacement_year(i), i) for i in items
-         if replacement_year(i) and replacement_year(i) <= horizon],
-        key=lambda x: x[0])
-    overdue = sum(1 for t in due if t["next_due"] < today.isoformat())
-    return render(request, "dashboard.html", due=due, warranties=warranties,
-                  upcoming=upcoming, counts=counts, recent=recent, overdue=overdue,
-                  greeting=greeting(), appts=appts)
+            "ORDER BY done_on DESC, l.id DESC LIMIT 4").fetchall()
+        shop = db.execute("SELECT name, list FROM shopping_items WHERE status='needed' "
+                          "ORDER BY added_at DESC LIMIT 6").fetchall()
+        n_items = db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    buckets: dict[str, list] = {}
+    for e in events:
+        buckets.setdefault(e["bucket"], []).append(e)
+    return render(request, "dashboard.html", greeting=greeting(), buckets=buckets,
+                  att=home.attention(events), steps=steps, show_setup=home.show_setup(steps),
+                  steps_done=sum(s["done"] for s in steps), insights=home.insights(),
+                  recent=recent, shop=shop, n_items=n_items)
+
+
+@app.post("/setup/dismiss")
+def setup_dismiss():
+    set_setting("setup_dismissed", "1")
+    return back("/")
+
+
+@app.get("/search")
+def search_page(request: Request, q: str = ""):
+    groups = search_mod.search(q)
+    return render(request, "search.html", q=q, groups=groups,
+                  total=sum(len(g["rows"]) for g in groups))
 
 
 # ---------- tasks ----------
@@ -290,7 +343,8 @@ APPT_COLS = ("kind, title, starts_at, ends_at, all_day, location, notes, contrac
 
 
 @app.get("/schedule")
-def schedule_page(request: Request, past: int = 0):
+def schedule_page(request: Request, past: int = 0, kind: str = "appointment", item: int | None = None,
+                  contractor: int | None = None):
     today = date.today().isoformat()
     op, order = ("<", "DESC") if past else (">=", "ASC")
     with get_db() as db:
@@ -302,7 +356,9 @@ def schedule_page(request: Request, past: int = 0):
         contractors = db.execute("SELECT id, name, trade FROM contractors ORDER BY name").fetchall()
         items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
     return render(request, "schedule.html", appts=appts, contractors=contractors, items=items,
-                  past=past, gcal_on=gcal.configured() and gcal.enabled())
+                  past=past, gcal_on=gcal.configured() and gcal.enabled(),
+                  new_kind="reminder" if kind == "reminder" else "appointment",
+                  new_item=item, new_contractor=contractor)
 
 
 @app.post("/schedule")
@@ -586,10 +642,35 @@ def item_detail(request: Request, item_id: int):
         photos = db.execute("SELECT * FROM photos WHERE item_id=? ORDER BY is_cover DESC, id",
                             (item_id,)).fetchall()
         history = db.execute(
-            "SELECT l.*, t.name AS task_name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
-            "WHERE t.item_id=? ORDER BY done_on DESC", (item_id,)).fetchall()
+            "SELECT l.done_on AS d, t.name AS title, l.cost, c.id AS contractor_id, c.name AS contractor, "
+            "'task' AS src, t.id AS ref FROM task_logs l JOIN tasks t ON t.id=l.task_id "
+            "LEFT JOIN contractors c ON c.id=l.contractor_id WHERE t.item_id=? "
+            "UNION ALL SELECT entry_date, COALESCE(note,'Expense'), amount, NULL, NULL, 'expense', id "
+            "FROM fund_entries WHERE item_id=? AND kind='expense' "
+            "UNION ALL SELECT substr(a.starts_at,1,10), a.title, NULL, c.id, c.name, 'appt', a.id "
+            "FROM appointments a LEFT JOIN contractors c ON c.id=a.contractor_id "
+            "WHERE a.item_id=? AND substr(a.starts_at,1,10) < ? "
+            "ORDER BY 1 DESC", (item_id, item_id, item_id, date.today().isoformat())).fetchall()
+        upcoming = db.execute(
+            "SELECT a.*, c.name AS contractor_name FROM appointments a "
+            "LEFT JOIN contractors c ON c.id=a.contractor_id WHERE a.item_id=? "
+            "AND substr(a.starts_at,1,10) >= ? ORDER BY starts_at", (item_id, date.today().isoformat())).fetchall()
+        contractors = db.execute(
+            "SELECT c.*, COUNT(*) AS jobs, MAX(d) AS last FROM ("
+            "  SELECT l.contractor_id AS cid, l.done_on AS d FROM task_logs l JOIN tasks t ON t.id=l.task_id "
+            "  WHERE t.item_id=? AND l.contractor_id IS NOT NULL "
+            "  UNION ALL SELECT contractor_id, substr(starts_at,1,10) FROM appointments "
+            "  WHERE item_id=? AND contractor_id IS NOT NULL) x JOIN contractors c ON c.id=x.cid "
+            "GROUP BY c.id ORDER BY last DESC", (item_id, item_id)).fetchall()
+        supplies = db.execute("SELECT * FROM shopping_items WHERE item_id=? AND status!='bought' "
+                              "ORDER BY added_at", (item_id,)).fetchall()
+        all_contractors = db.execute("SELECT id, name, trade FROM contractors ORDER BY name").fetchall()
+    spent = sum(h["cost"] or 0 for h in history)
+    w_days = (date.fromisoformat(item["warranty_until"]) - date.today()).days \
+        if item["warranty_until"] else None
     return render(request, "item_detail.html", item=item, rooms=rooms, docs=docs, tasks=tasks,
-                  history=history, photos=photos,
+                  history=history, photos=photos, upcoming=upcoming, contractors=contractors,
+                  supplies=supplies, spent=spent, w_days=w_days, all_contractors=all_contractors,
                   replace_year=replacement_year(item))
 
 
@@ -648,12 +729,51 @@ async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(
     with get_db() as db:
         if rid and not iid and saved:
             purge_photos(db, "room_id", rid)  # rooms keep a single cover photo
-        db.executemany(
-            "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, caption, created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            [(iid, rid, a, b, blank(caption), datetime.now().isoformat(timespec="seconds"))
-             for a, b in saved])
+        first = None
+        for a, b in saved:
+            cur = db.execute(
+                "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, caption, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (iid, rid, a, b, blank(caption), datetime.now().isoformat(timespec="seconds")))
+            first = first or cur.lastrowid
+    if next == "photo" and first:
+        return back(f"/gallery/{first}?new=1")
     return back(next if next.startswith("/") else "/gallery")
+
+
+@app.post("/gallery/{photo_id}/to-item")
+def photo_to_item(photo_id: int, name: str = Form(...), room_id: str = Form(None)):
+    """Camera-first: turn a captured photo into a new inventory item."""
+    with get_db() as db:
+        p = db.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+        if not p:
+            raise HTTPException(404)
+        cur = db.execute("INSERT INTO items (name, room_id) VALUES (?,?)",
+                         (name.strip(), num(room_id, int)))
+        db.execute("UPDATE photos SET item_id=?, room_id=NULL, is_cover=1 WHERE id=?",
+                   (cur.lastrowid, photo_id))
+    return back(f"/items/{cur.lastrowid}?new=1")
+
+
+@app.post("/gallery/{photo_id}/to-receipt")
+def photo_to_receipt(photo_id: int, title: str = Form(None), item_id: str = Form(None)):
+    """Camera-first: file a captured photo as a receipt/document (optionally on an item)."""
+    with get_db() as db:
+        p = db.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+        if not p:
+            raise HTTPException(404)
+        up = data_dir() / "uploads"
+        stored = f"{uuid.uuid4().hex}.jpg"
+        shutil.copyfile(up / p["stored_name"], up / stored)
+        iid = num(item_id, int)
+        db.execute("INSERT INTO documents (title, filename, stored_name, item_id, uploaded_at) "
+                   "VALUES (?,?,?,?,?)",
+                   (blank(title) or f"Receipt {date.today().isoformat()}", f"receipt-{photo_id}.jpg",
+                    stored, iid, datetime.now().isoformat(timespec="seconds")))
+        for n in (p["stored_name"], p["thumb_name"]):
+            (up / n).unlink(missing_ok=True)
+        db.execute("DELETE FROM photos WHERE id=?", (photo_id,))
+    return back(f"/items/{iid}" if iid else "/documents")
 
 
 def photo_path(photo_id: int, thumb: bool) -> Path:
@@ -832,6 +952,38 @@ def contractor_create(name: str = Form(...), trade: str = Form(None), phone: str
     return back("/contractors")
 
 
+@app.get("/contractors/{cid}")
+def contractor_detail(request: Request, cid: int):
+    with get_db() as db:
+        c = db.execute("SELECT * FROM contractors WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404)
+        jobs = db.execute(
+            "SELECT l.done_on AS d, t.name AS title, l.cost, l.notes, i.id AS item_id, i.name AS item_name, "
+            "t.id AS task_id FROM task_logs l JOIN tasks t ON t.id=l.task_id "
+            "LEFT JOIN items i ON i.id=t.item_id WHERE l.contractor_id=? ORDER BY l.done_on DESC",
+            (cid,)).fetchall()
+        appts = db.execute(
+            "SELECT a.*, i.name AS item_name FROM appointments a LEFT JOIN items i ON i.id=a.item_id "
+            "WHERE contractor_id=? ORDER BY starts_at DESC", (cid,)).fetchall()
+    today = date.today().isoformat()
+    return render(request, "contractor.html", c=c, jobs=jobs,
+                  upcoming=[a for a in appts if a["starts_at"][:10] >= today][::-1],
+                  past=[a for a in appts if a["starts_at"][:10] < today],
+                  spent=sum(j["cost"] or 0 for j in jobs),
+                  items={(j["item_id"], j["item_name"]) for j in jobs if j["item_id"]}
+                  | {(a["item_id"], a["item_name"]) for a in appts if a["item_id"]})
+
+
+@app.post("/contractors/{cid}")
+def contractor_update(cid: int, name: str = Form(...), trade: str = Form(None), phone: str = Form(None),
+                      email: str = Form(None), notes: str = Form(None)):
+    with get_db() as db:
+        db.execute("UPDATE contractors SET name=?, trade=?, phone=?, email=?, notes=? WHERE id=?",
+                   (name.strip(), blank(trade), blank(phone), blank(email), blank(notes), cid))
+    return back(f"/contractors/{cid}")
+
+
 @app.post("/contractors/{cid}/delete")
 def contractor_delete(cid: int):
     with get_db() as db:
@@ -958,7 +1110,7 @@ def budget_entry_delete(entry_id: int):
 
 @app.get("/settings")
 def settings_page(request: Request, sent: str | None = None, g: str | None = None,
-                  gmsg: str | None = None):
+                  gmsg: str | None = None, imp: str | None = None, imsg: str | None = None):
     google = dict(
         configured=gcal.configured(), key=gcal.key_path().is_file(),
         email=gcal.service_account_email(), calendar_id=gcal.calendar_id() or "",
@@ -968,7 +1120,7 @@ def settings_page(request: Request, sent: str | None = None, g: str | None = Non
         last_sync=get_setting("gcal_last_sync"), last_error=get_setting("gcal_last_error"))
     return render(request, "settings.html", targets=len(notify.apprise_urls()), sent=sent,
                   lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()),
-                  google=google, g=g, gmsg=gmsg)
+                  google=google, g=g, gmsg=gmsg, imp=imp, imsg=imsg)
 
 
 @app.post("/settings/test")
@@ -1028,6 +1180,33 @@ def settings_google_sync():
     if failed:
         return gback("err", f"Synced {ok}, {failed} failed: {get_setting('gcal_last_error')}")
     return gback("ok", f"Synced {ok} events to Google Calendar")
+
+
+@app.get("/settings/backup.zip")
+def settings_backup(bg: BackgroundTasks):
+    path, name = backup.backup_zip()
+    bg.add_task(shutil.rmtree, path.parent, True)
+    return FileResponse(path, filename=name, media_type="application/zip")
+
+
+@app.get("/export/{kind}.csv")
+def export_csv(kind: str):
+    if kind not in backup.EXPORTS:
+        raise HTTPException(404)
+    return Response(backup.export_csv(kind), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="hearth-{kind}.csv"'})
+
+
+@app.post("/settings/import/items")
+async def settings_import(file: UploadFile = File(...)):
+    from urllib.parse import quote_plus
+    added, skipped, errors = backup.import_items(await file.read())
+    msg = f"Imported {added} item{'s' if added != 1 else ''}"
+    if skipped:
+        msg += f", skipped {skipped} already in inventory"
+    if errors:
+        msg += ". " + "; ".join(errors[:3])
+    return back(f"/settings?imp={'err' if errors and not added else 'ok'}&imsg={quote_plus(msg)}#backup")
 
 
 @app.get("/api/health")
