@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, blank_state, tip %}
+{% block title %}Funds{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Sinking funds</h1><p>Save a little each month so replacements are never a surprise.</p></div>
+<div class="actions"><a class="btn ghost" href="/reports/insurance.pdf" target="_blank">{{ i('file') }} Insurance packet (PDF)</a>
+<button type="button" data-dialog="new-fund">{{ i('plus') }} Custom fund</button></div></div>
+<div class="facts">
+<div><span>Set aside each month {{ tip('Sum of every fund: (target − saved) ÷ months until it is due.') }}</span><b class="countup" data-value="{{ f.monthly|round|int }}">{{ money(f.monthly) if f.monthly else '$0' }}</b><small>across {{ f.rows|length }} fund{{ 's' if f.rows|length != 1 }}</small></div>
+<div><span>Due now</span><b class="{{ 'warn' if f.due_now }}">{{ money(f.due_now) if f.due_now else '$0' }}</b><small>items past their expected life</small></div>
+<div><span>Total targets</span><b>{{ money(f.target) if f.target else '$0' }}</b><small>{{ money(f.saved) if f.saved else '$0' }} saved so far</small></div>
+<div><span>Home fund balance</span><b>{{ money(balance) if balance > 0 else '$0' }}</b><small><a href="/budget">Budget</a></small></div>
+</div>
+{% if f.rows %}<section class="card"><div class="card-b" style="padding-top:12px"><div class="list">{% for r in f.rows %}
+<div class="row"><div class="dot {{ 'warn' if r.overdue else 'acc' }}">{{ i('box' if r.kind == 'item' else 'banknote') }}</div>
+<div class="grow">{% if r.kind == 'item' %}<a href="/items/{{ r.item_id }}">{{ r.label }}</a>{% else %}<b>{{ r.label }}</b>{% endif %}
+<small>{{ money(r.target) }} target{% if r.saved %} · {{ money(r.saved) }} saved{% endif %}{% if r.due %} · due {{ r.due|nicedate }}{% endif %}</small>
+{% if r.target %}<div class="progress" style="margin-top:6px;max-width:320px" role="progressbar" aria-label="Saved" aria-valuenow="{{ ((r.saved / r.target) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ [100, (r.saved / r.target * 100)]|min }}%"></i></div>{% endif %}</div>
+<b class="num">{{ (money(r.monthly) ~ '/mo') if r.monthly else ('due now' if r.overdue else '—') }}</b>
+{% if r.kind == 'custom' %}<form method="post" action="/funds/{{ r.id }}/delete" onsubmit="return confirm('Delete this fund?')"><button class="icon ghost sm" aria-label="Delete {{ r.name }}">{{ i('trash') }}</button></form>{% endif %}
+</div>{% endfor %}</div></div></section>
+{% else %}{% call blank_state('savings', 'No funds yet', 'Give appliances a purchase date, expected life and replacement cost, and Hearth works out what to set aside each month.') %}
+<a class="btn" href="/items">{{ i('box') }} Go to inventory</a>{% endcall %}{% endif %}
+{% if missing %}<p class="muted small">{{ missing }} item{{ 's' if missing != 1 }} can't be funded yet (missing purchase date, lifespan or cost). <a href="/budget?view=forecast">See what's missing</a></p>{% endif %}
+<dialog class="panel" id="new-fund" aria-labelledby="nf-h"><form method="post" action="/funds">
+<div class="dlg-h"><h2 id="nf-h">Custom fund</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><p class="muted" style="margin:0">For things that aren't in your inventory: a new roof, driveway, deck stain…</p>
+<label>Name<input name="name" required placeholder="Roof replacement"></label>
+<div class="form"><label>Target<input name="target_amount" type="number" step="0.01" min="0" inputmode="decimal"></label><label>By<input name="target_date" type="date"></label></div>
+<div class="form"><label>Already saved<input name="balance" type="number" step="0.01" min="0" inputmode="decimal"></label><label>Monthly <span class="hint">blank = calculate</span><input name="monthly_amount" type="number" step="0.01" min="0"></label></div>
+<label>For item <span class="hint">optional; overrides that item's automatic fund</span><select name="item_id"><option value="">None</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label>
+<label>Notes<textarea name="notes" rows="2"></textarea></label></div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>Save fund</button></div></form></dialog>
+{% endblock %}

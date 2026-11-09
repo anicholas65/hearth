@@ -3,7 +3,7 @@
 {% set base = '/items?' ~ ('room=' ~ room ~ '&' if room else '') %}
 <div class="page-head"><div><h1>{{ current.name if current else 'Inventory' }}</h1>
 <p>{{ items|length }} item{{ 's' if items|length != 1 }}{% if filtered %} match{% endif %}{% if total %} · {{ money(total) }} recorded value{% endif %}</p></div>
-<div class="actions">{% if current %}<button type="button" class="ghost" data-dialog="room-edit">{{ i('pencil') }} Room</button>{% endif %}
+<div class="actions"><a class="btn ghost sm" href="/reports/insurance.pdf{{ '?room=' ~ current.id if current }}" target="_blank">{{ i('file') }} Insurance PDF</a>{% if current %}<button type="button" class="ghost" data-dialog="room-edit">{{ i('pencil') }} Room</button>{% endif %}
 <button type="button" data-dialog="new-item">{{ i('plus') }} Add item</button></div></div>
 
 {% if n_all or rooms %}

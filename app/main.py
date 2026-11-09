@@ -178,7 +178,7 @@ SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
                                         ("/shopping", "Shopping", "cart")]),
     "organize": ("Stuff", "box", [("/items", "Inventory", "box"), ("/documents", "Documents", "file"),
                                   ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users")]),
-    "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"),
+    "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"), ("/funds", "Funds", "banknote"),
                                      ("/budget?view=forecast", "Forecast", "chart")]),
 }
 
@@ -1156,6 +1156,7 @@ def item_detail(request: Request, item_id: int):
     return render(request, "item_detail.html", item=item, rooms=rooms, docs=docs, tasks=tasks,
                   categories=plan.ITEM_CATEGORIES, presets=plan.PRESETS,
                   manual_links=__import__("app.capture", fromlist=["x"]).manual_links(item["brand"], item["model"]),
+                  coo=finance.cost_of_ownership(item_id),
                   history=history, photos=photos, upcoming=upcoming, contractors=contractors,
                   supplies=supplies, spent=spent, w_days=w_days, all_contractors=all_contractors,
                   replace_year=replacement_year(item))
@@ -1595,6 +1596,53 @@ def settings_remote(public_url: str = Form(None), ntfy_server: str = Form(None),
 def settings_brand(use: str = Form("0")):
     set_setting("brand_v2", "1" if use == "1" else "0")
     return back(toast_url("/settings#brand", "New Hearth logo turned on" if use == "1" else "Original logo restored"))
+
+
+# ---------- sinking funds & reports ----------
+
+@app.get("/funds")
+def funds_page(request: Request):
+    with get_db() as db:
+        items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
+        missing = db.execute("SELECT COUNT(*) FROM items WHERE purchase_date IS NULL OR life_years IS NULL "
+                             "OR replace_cost IS NULL").fetchone()[0]
+    return render(request, "funds.html", f=finance.sinking_funds(), items=items, missing=missing,
+                  balance=finance.fund_balance())
+
+
+@app.post("/funds")
+async def fund_save(request: Request):
+    form = await request.form()
+    fid = num(form.get("id"), int)
+    vals = (blank(form.get("name")), num(form.get("item_id"), int), num(form.get("target_amount")),
+            blank(form.get("target_date")), num(form.get("monthly_amount")), num(form.get("balance")),
+            blank(form.get("notes")))
+    if not vals[0]:
+        raise HTTPException(400, "Give the fund a name.")
+    with get_db() as db:
+        if fid:
+            db.execute("UPDATE funds SET name=?, item_id=?, target_amount=?, target_date=?, monthly_amount=?, "
+                       "balance=?, notes=? WHERE id=?", (*vals, fid))
+        else:
+            db.execute("INSERT INTO funds (name, item_id, target_amount, target_date, monthly_amount, balance, notes) "
+                       "VALUES (?,?,?,?,?,?,?)", vals)
+    return back(toast_url("/funds", "Fund saved"))
+
+
+@app.post("/funds/{fid}/delete")
+def fund_delete(fid: int):
+    with get_db() as db:
+        db.execute("DELETE FROM funds WHERE id=?", (fid,))
+    return back(toast_url("/funds", "Fund deleted"))
+
+
+@app.get("/reports/insurance.pdf")
+def insurance_report(request: Request, room: int | None = None):
+    from . import reports
+    member = request.scope.get("hearth_member")
+    pdf = reports.insurance_pdf(room, owner=(member or {}).get("name", ""))
+    name = f"hearth-insurance-{'room-' + str(room) if room else 'house'}-{date.today():%Y%m%d}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
 @app.post("/settings/categories")

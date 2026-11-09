@@ -142,3 +142,84 @@ def forecast_data(period: int = 5) -> dict:
         monthly=shortfall / (period * 12), balance=balance, shortfall=shortfall,
         soon=soon, missing=missing, beyond=beyond, n_items=len(items), no_cost=no_cost,
         covered=len(items) - len(missing), axis_max=axis_max, ticks=[axis_max * k / 4 for k in range(5)])
+
+
+# ---------------- sinking funds ----------------
+
+def _months_between(a: date, b: date) -> int:
+    return (b.year - a.year) * 12 + (b.month - a.month)
+
+
+def sinking_funds(today: date | None = None) -> dict:
+    """Per-item funds (purchase date + lifespan + replacement cost) plus custom funds from `funds`.
+
+    monthly = (target - already saved) / months left, at least 1 month. Items past their expected life
+    show the whole remaining amount as due now. Saved amounts come from a matching custom fund row."""
+    today = today or date.today()
+    with get_db() as db:
+        items = db.execute("SELECT id, name, purchase_date, life_years, replace_cost FROM items "
+                           "WHERE purchase_date IS NOT NULL AND life_years IS NOT NULL AND replace_cost > 0").fetchall()
+        custom = db.execute("SELECT f.*, i.name AS item_name FROM funds f LEFT JOIN items i ON i.id=f.item_id "
+                            "ORDER BY f.target_date").fetchall()
+    saved_for = {c["item_id"]: (c["balance"] or 0) for c in custom if c["item_id"]}
+    rows = []
+    for it in items:
+        p = date.fromisoformat(it["purchase_date"])
+        due = date(p.year + int(it["life_years"]), p.month, min(p.day, 28))
+        saved = saved_for.get(it["id"], 0)
+        left = max(0.0, it["replace_cost"] - saved)
+        months = _months_between(today, due)
+        rows.append(dict(kind="item", item_id=it["id"], name=it["name"], target=it["replace_cost"], saved=saved,
+                         due=due.isoformat(), months=max(months, 0), overdue=months <= 0,
+                         monthly=0.0 if months <= 0 else left / months, left=left,
+                         label=f"Set aside ${left / max(months, 1):,.0f}/mo — {it['name'].lower()} due {due.year}"
+                         if months > 0 else f"{it['name']} is past its expected life (${left:,.0f} to replace)"))
+    for c in custom:
+        if c["item_id"] and c["item_id"] in {r["item_id"] for r in rows}:
+            continue
+        target, saved = c["target_amount"] or 0, c["balance"] or 0
+        due = date.fromisoformat(c["target_date"]) if c["target_date"] else None
+        months = _months_between(today, due) if due else None
+        monthly = c["monthly_amount"] if c["monthly_amount"] is not None else (
+            max(0.0, target - saved) / months if months and months > 0 else 0.0)
+        rows.append(dict(kind="custom", id=c["id"], uuid=c["uuid"], name=c["name"], target=target, saved=saved,
+                         due=due.isoformat() if due else None, months=months, overdue=bool(months is not None and months <= 0),
+                         monthly=monthly, left=max(0.0, target - saved), notes=c["notes"],
+                         label=f"Set aside ${monthly:,.0f}/mo — {c['name'].lower()}" + (f" by {due.year}" if due else "")))
+    rows.sort(key=lambda r: (r["due"] or "9999", r["name"]))
+    return dict(rows=rows, monthly=sum(r["monthly"] for r in rows), due_now=sum(r["left"] for r in rows if r["overdue"]),
+                target=sum(r["target"] for r in rows), saved=sum(r["saved"] for r in rows))
+
+
+def cost_of_ownership(item_id: int, today: date | None = None) -> dict:
+    """Purchase + maintenance + linked expenses so far, then the projected replacement."""
+    today = today or date.today()
+    with get_db() as db:
+        it = db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+        ev = []
+        if it["price"]:
+            ev.append({"d": it["purchase_date"] or (it["created_at"] or "")[:10], "label": "Purchase",
+                       "amount": it["price"], "kind": "purchase"})
+        for r in db.execute("SELECT l.done_on, l.cost, t.name FROM task_logs l JOIN tasks t ON t.id=l.task_id "
+                            "WHERE t.item_id=? AND l.cost > 0", (item_id,)):
+            ev.append({"d": r["done_on"], "label": r["name"], "amount": r["cost"], "kind": "maintenance"})
+        for r in db.execute("SELECT entry_date, amount, note FROM fund_entries WHERE item_id=? AND kind='expense'",
+                            (item_id,)):
+            ev.append({"d": r["entry_date"], "label": r["note"] or "Expense", "amount": r["amount"], "kind": "expense"})
+    ev = sorted([e for e in ev if e["d"]], key=lambda e: e["d"])
+    run = 0.0
+    for e in ev:
+        run += e["amount"]
+        e["total"] = run
+    spent = run
+    proj = None
+    if it["purchase_date"] and it["life_years"] and it["replace_cost"]:
+        p = date.fromisoformat(it["purchase_date"])
+        proj = {"d": date(p.year + int(it["life_years"]), p.month, min(p.day, 28)).isoformat(),
+                "label": "Estimated replacement", "amount": it["replace_cost"], "kind": "projected",
+                "total": run + it["replace_cost"]}
+    years = None
+    if it["purchase_date"]:
+        years = max((today - date.fromisoformat(it["purchase_date"])).days / 365.25, 0.1)
+    return dict(events=ev, projected=proj, spent=spent, per_year=spent / years if years else None,
+                maint=sum(e["amount"] for e in ev if e["kind"] != "purchase"))

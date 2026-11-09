@@ -590,3 +590,10 @@ dialog.palette{width:min(640px,94vw);margin-top:12vh;padding:0}
 .scanbox{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3}
 .scanbox video{width:100%;height:100%;object-fit:cover;display:block}
 .scanline{position:absolute;left:10%;right:10%;top:50%;height:2px;background:var(--accent-2);box-shadow:0 0 12px var(--accent-2)}
+.cootl{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.cootl li{display:grid;grid-template-columns:64px 1fr auto 80px;gap:10px;align-items:center;padding:6px 0;position:relative;font-size:14px}
+.cootl li::before{content:"";position:absolute;left:-20px;top:50%;width:10px;height:10px;border-radius:50%;background:var(--accent);transform:translateY(-50%)}
+.cootl li.purchase::before{background:var(--accent-2)}.cootl li.projected::before{background:var(--surface);border:2px dashed var(--muted)}
+.cootl li.projected{color:var(--muted)}
+.cootl .d{color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px}
+@media (max-width:520px){.cootl li{grid-template-columns:56px 1fr auto}.cootl li>span:last-child{display:none}}

@@ -43,6 +43,12 @@
 {% for a in upcoming %}<div class="row"><div class="dot">{{ i('calendar') }}</div><div class="grow"><a href="/schedule/{{ a.id }}">{{ a.title|cap }}</a><small>{{ a.starts_at|nicedate }}{% if not a.all_day %} · {{ a.starts_at|nicetime }}{% endif %}{% if a.contractor_name %} · {{ a.contractor_name }}{% endif %}</small></div></div>{% endfor %}
 </div></div></section>{% endif %}
 
+{% if coo.events or coo.projected %}<section class="card">{{ head('Cost of ownership', 'wallet') }}<div class="card-b">
+<p class="muted small" style="margin:0 0 8px">{{ money(coo.spent) if coo.spent else '$0' }} so far{% if coo.per_year %} · about {{ money(coo.per_year) }}/year{% endif %}{% if coo.maint %} · {{ money(coo.maint) }} in upkeep{% endif %}</p>
+<ol class="cootl">{% for e in coo.events %}<li class="{{ e.kind }}"><span class="d">{{ e.d[:7] }}</span><span class="grow">{{ e.label|cap }}</span><b class="num">{{ money(e.amount) }}</b><span class="muted small num">{{ money(e.total) }}</span></li>{% endfor %}
+{% if coo.projected %}<li class="projected"><span class="d">{{ coo.projected.d[:7] }}</span><span class="grow">{{ coo.projected.label }} <span class="badge">estimate</span></span><b class="num">{{ money(coo.projected.amount) }}</b><span class="muted small num">{{ money(coo.projected.total) }}</span></li>{% endif %}</ol>
+</div></section>{% endif %}
+
 <section class="card">{{ head('History', 'clock') }}<div class="card-b">
 {% if history %}<div class="list">{% for h in history %}<div class="row"><div class="dot {{ 'ok' if h.src == 'task' }}">{{ i({'task':'check','expense':'wallet','appt':'calendar'}[h.src]) }}</div>
 <div class="grow"><b>{{ h.title|cap }}</b><small>{{ h.d|nicedate }}{% if h.contractor %} · <a href="/contractors/{{ h.contractor_id }}">{{ h.contractor }}</a>{% endif %}{% if h.src == 'expense' %} · budget expense{% endif %}</small></div>{% if h.cost %}<b>{{ money(h.cost) }}</b>{% endif %}</div>{% endfor %}</div>
