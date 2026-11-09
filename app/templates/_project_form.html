@@ -1,0 +1,6 @@
+<label>Name<input name="name" required value="{{ p.name if p else '' }}" placeholder="Rebuild back deck"></label>
+<div class="seg" role="radiogroup" aria-label="Type"><label><input type="radio" name="kind" value="project" {{ 'checked' if not p or p.kind == 'project' }}>Project</label><label><input type="radio" name="kind" value="hobby" {{ 'checked' if p and p.kind == 'hobby' }}>Hobby</label></div>
+<div class="form"><label>Status<select name="status">{% for st in ['planned','active','paused','done'] %}<option value="{{ st }}" {{ 'selected' if p and p.status == st }}>{{ st|capitalize }}</option>{% endfor %}</select></label>
+<label>Budget<input name="budget" type="number" step="0.01" min="0" inputmode="decimal" value="{{ p.budget|n if p else '' }}"></label></div>
+<div class="form"><label>Started<input name="started_on" type="date" value="{{ (p.started_on or '') if p else '' }}"></label><label>Finished<input name="finished_on" type="date" value="{{ (p.finished_on or '') if p else '' }}"></label></div>
+<label>Notes<textarea name="notes" rows="3">{{ (p.notes or '') if p else '' }}</textarea></label>

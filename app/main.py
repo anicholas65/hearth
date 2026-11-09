@@ -177,7 +177,8 @@ SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
     "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar"),
                                         ("/shopping", "Shopping", "cart"), ("/pantry", "Pantry", "box")]),
     "organize": ("Stuff", "box", [("/items", "Inventory", "box"), ("/documents", "Documents", "file"),
-                                  ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users")]),
+                                  ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users"),
+                                  ("/vehicles", "Vehicles", "car"), ("/projects", "Hobbies", "star")]),
     "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"), ("/funds", "Funds", "banknote"),
                                      ("/budget?view=forecast", "Forecast", "chart")]),
 }
@@ -1273,8 +1274,9 @@ def purge_photos(db, col: str, ref: int) -> None:
 @app.post("/photos")
 async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(None),
                        room_id: str = Form(None), caption: str = Form(None),
-                       next: str = Form("/gallery")):
+                       next: str = Form("/gallery"), project_id: str = Form(None), vehicle_id: str = Form(None)):
     iid, rid = num(item_id, int), num(room_id, int)
+    pid, vid = num(project_id, int), num(vehicle_id, int)
     saved = []
     for f in files:
         if f.filename:
@@ -1285,9 +1287,9 @@ async def photo_upload(files: list[UploadFile] = File(...), item_id: str = Form(
         first = None
         for a, b in saved:
             cur = db.execute(
-                "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, caption, created_at) "
-                "VALUES (?,?,?,?,?,?)",
-                (iid, rid, a, b, blank(caption), datetime.now().isoformat(timespec="seconds")))
+                "INSERT INTO photos (item_id, room_id, stored_name, thumb_name, caption, created_at, project_id, vehicle_id) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (iid, rid, a, b, blank(caption), datetime.now().isoformat(timespec="seconds"), pid, vid))
             first = first or cur.lastrowid
     if next == "photo" and first:
         return back(f"/gallery/{first}?new=1")
@@ -1598,7 +1600,8 @@ def _entry_fields(form):
         raise HTTPException(400, "Enter an amount greater than zero.")
     return dict(kind=kind, amount=amount, d=blank(form.get("entry_date")) or date.today().isoformat(),
                 note=blank(form.get("note")), item_id=num(form.get("item_id"), int),
-                category=blank(form.get("category")) if kind == "expense" else None)
+                category=blank(form.get("category")) if kind == "expense" else None,
+                vehicle_id=num(form.get("vehicle_id"), int), project_id=num(form.get("project_id"), int))
 
 
 @app.post("/budget/entries")
@@ -1608,9 +1611,10 @@ async def budget_entry(request: Request):
     doc = await _save_receipt(form.get("receipt"), f"Receipt: {f['note'] or f['category'] or 'expense'} ({f['d']})",
                               f["item_id"])
     with get_db() as db:
-        db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id, category, document_id) "
-                   "VALUES (?,?,?,?,?,?,?)", (f["d"], f["kind"], f["amount"], f["note"], f["item_id"],
-                                              f["category"], doc))
+        db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id, category, document_id, "
+                   "vehicle_id, project_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                   (f["d"], f["kind"], f["amount"], f["note"], f["item_id"], f["category"], doc,
+                    f["vehicle_id"], f["project_id"]))
     label = "Funds added" if f["kind"] == "allocation" else "Expense recorded"
     return back(toast_url(safe_next(form.get("next"), f"/budget?year={f['d'][:4]}"), f"{label}: ${f['amount']:,.2f}"))
 
@@ -1844,6 +1848,10 @@ async def settings_import(file: UploadFile = File(...)):
     if errors:
         msg += ". " + "; ".join(errors[:3])
     return back(f"/settings?imp={'err' if errors and not added else 'ok'}&imsg={quote_plus(msg)}#backup")
+
+
+from .modules import router as modules_router  # noqa: E402
+app.include_router(modules_router)
 
 
 @app.get("/api/health")

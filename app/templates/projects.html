@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, blank_state %}
+{% block title %}Projects & hobbies{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Projects &amp; hobbies</h1><p>Plans, materials, budget versus actual, and the supplies they use.</p></div>
+<button type="button" data-dialog="new-project">{{ i('plus') }} New</button></div>
+<nav class="filters" aria-label="Filter" style="margin-bottom:14px"><a href="/projects" class="{{ 'on' if not kind }}">All</a><a href="/projects?kind=project" class="{{ 'on' if kind == 'project' }}">Projects</a><a href="/projects?kind=hobby" class="{{ 'on' if kind == 'hobby' }}">Hobbies</a></nav>
+{% if cards %}<div class="tiles">{% for p, s, ph in cards %}<a class="tile" href="/projects/{{ p.id }}"><div class="ph">{% if ph %}<img src="/photos/{{ ph.id }}/thumb" alt="" loading="lazy">{% else %}<div class="placeholder">{% include "illus/" ~ ('maintenance' if p.kind == 'project' else 'photos') ~ ".svg" %}</div>{% endif %}
+<span class="corner badge {{ 'ok' if p.status == 'done' else 'acc' if p.status == 'active' else '' }}">{{ p.status|capitalize }}</span></div>
+<div class="body"><b>{{ p.name }}</b><span class="muted small">{{ 'Hobby' if p.kind == 'hobby' else 'Project' }}{% if s.materials %} · {{ s.materials|length }} material{{ 's' if s.materials|length != 1 }}{% endif %}</span>
+{% if p.budget %}<div class="progress" style="margin-top:6px" role="progressbar" aria-label="Budget used" aria-valuenow="{{ s.pct|round|int }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ [s.pct, 100]|min }}%;{{ 'background:var(--bad)' if s.pct > 100 }}"></i></div>
+<div class="meta"><span class="small muted">{{ money(s.spent) if s.spent else '$0' }} of {{ money(p.budget) }}</span></div>{% endif %}</div></a>{% endfor %}</div>
+{% else %}{% call blank_state('maintenance', 'Nothing here yet', 'Track a deck rebuild, a garden bed or a film-photography habit: materials, costs, photos and the consumables they eat.') %}
+<button type="button" data-dialog="new-project">{{ i('plus') }} Start one</button>{% endcall %}{% endif %}
+<dialog class="panel" id="new-project" aria-labelledby="np-h"><form method="post" action="/projects">
+<div class="dlg-h"><h2 id="np-h">New project or hobby</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% set p = none %}{% include "_project_form.html" %}</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>Create</button></div></form></dialog>
+{% endblock %}

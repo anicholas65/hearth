@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, blank_state %}
+{% block title %}Vehicles{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Vehicles</h1><p>Odometer, maintenance by miles or months, and what each one really costs.</p></div>
+<button type="button" data-dialog="new-vehicle">{{ i('plus') }} Add vehicle</button></div>
+{% if cards %}<div class="tiles">{% for v, s in cards %}<a class="tile" href="/vehicles/{{ v.id }}"><div class="body" style="padding:16px">
+<div class="row" style="border:0;padding:0"><div class="dot acc">{{ i('car') }}</div><div class="grow"><b>{{ v.name }}</b><small>{{ [v.year, v.make, v.model]|select|join(' ') }}</small></div></div>
+<div class="facts" style="margin:10px 0 0;grid-template-columns:1fr 1fr">
+<div><span>Odometer</span><b style="font-size:16px">{{ '{:,}'.format(s.odometer) ~ ' mi' if s.odometer else '—' }}</b></div>
+<div><span>Cost / mile</span><b style="font-size:16px">{{ ('$%.2f'|format(s.cpm)) if s.cpm else '—' }}</b></div></div>
+{% set nxt = s.due|selectattr('due_now')|list %}<p class="small" style="margin:8px 0 0">{% if nxt %}<span class="badge warn">{{ i('wrench') }} {{ nxt|length }} service{{ 's' if nxt|length != 1 }} due</span>{% elif s.due %}<span class="muted">Next: {{ s.due[0].name }}</span>{% else %}<span class="muted">No maintenance set up</span>{% endif %}</p>
+</div></a>{% endfor %}</div>
+{% else %}{% call blank_state('garage', 'No vehicles yet', 'Track oil changes and tire rotations by mileage or months, keep the service history, and see cost per mile.') %}
+<button type="button" data-dialog="new-vehicle">{{ i('plus') }} Add a vehicle</button>{% endcall %}{% endif %}
+<dialog class="panel" id="new-vehicle" aria-labelledby="nv-h"><form method="post" action="/vehicles">
+<div class="dlg-h"><h2 id="nv-h">Add vehicle</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% set v = none %}{% include "_vehicle_form.html" %}</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>Add</button></div></form></dialog>
+{% endblock %}

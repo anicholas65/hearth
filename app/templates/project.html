@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
+{% block title %}{{ p.name }}{% endblock %}{% block content %}
+<a class="crumb" href="/projects">{{ i('back') }} Projects &amp; hobbies</a>
+<div class="page-head"><div><h1>{{ p.name }}</h1><p><span class="badge {{ 'ok' if p.status == 'done' else 'acc' if p.status == 'active' else '' }}">{{ p.status|capitalize }}</span> {{ 'Hobby' if p.kind == 'hobby' else 'Project' }}{% if p.started_on %} · started {{ p.started_on|nicedate }}{% endif %}</p></div>
+<button type="button" class="ghost" data-dialog="edit-p">{{ i('pencil') }} Edit</button></div>
+<div class="facts"><div><span>Budget</span><b>{{ money(p.budget) if p.budget else '—' }}</b></div>
+<div><span>Spent</span><b class="{{ 'bad' if p.budget and s.spent > p.budget }}">{{ money(s.spent) if s.spent else '$0' }}</b><small>{{ (s.pct|round|int ~ '% of budget') if s.pct is not none else 'no budget set' }}</small></div>
+<div><span>Materials (planned)</span><b>{{ money(s.planned) if s.planned else '$0' }}</b><small>{{ s.materials|length }} line{{ 's' if s.materials|length != 1 }}</small></div></div>
+{% if p.notes %}<section class="card"><div class="card-b" style="padding-top:14px;white-space:pre-line">{{ p.notes }}</div></section>{% endif %}
+<div class="split"><div>
+<section class="card" id="materials">{{ head('Materials', 'box') }}<div class="card-b">
+{% if s.materials %}<div class="list">{% for mt in s.materials %}<div class="row"><div class="grow"><b>{{ mt.name }}</b><small>{{ (mt.qty|n) ~ ' ×' if mt.qty }} {{ money(mt.cost) if mt.cost }}{% if mt.item_name %} · <a href="/items/{{ mt.item_id }}">{{ mt.item_name }}</a> (in inventory){% endif %}</small></div>
+<form method="post" action="/projects/{{ p.id }}/materials"><input type="hidden" name="name" value="x"><input type="hidden" name="remove" value="{{ loop.index0 }}"><button class="icon ghost sm" aria-label="Remove {{ mt.name }}">{{ i('trash') }}</button></form></div>{% endfor %}</div>{% endif %}
+<form class="form" method="post" action="/projects/{{ p.id }}/materials" style="margin-top:10px"><label>Material<input name="name" required placeholder="Deck screws"></label>
+<label>Qty<input name="qty" type="number" step="any" value="1"></label><label>Cost each<input name="cost" type="number" step="0.01"></label>
+<label>From inventory<select name="item_id"><option value="">—</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label><button class="ghost">{{ i('plus') }} Add</button></form></div></section>
+<section class="card">{{ head('Spending', 'wallet') }}<div class="card-b">
+{% if expenses %}<div class="list">{% for e in expenses %}<div class="row"><div class="grow"><b>{{ e.note or 'Expense' }}</b><small>{{ e.entry_date|nicedate }}</small></div><b class="num">{{ money(e.amount) }}</b></div>{% endfor %}</div>{% endif %}
+<form class="form" method="post" action="/budget/entries" style="margin-top:10px"><input type="hidden" name="kind" value="expense"><input type="hidden" name="project_id" value="{{ p.id }}"><input type="hidden" name="next" value="/projects/{{ p.id }}">
+<label>What<input name="note" placeholder="Lumber"></label><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal"></label><input type="hidden" name="category" value="Improvements"><button class="ghost">{{ i('plus') }} Record</button></form></div></section></div>
+<div>
+<section class="card" id="stock">{{ head('Consumables', 'box') }}<div class="card-b">
+{% if stock %}<div class="list">{% for st in stock %}<div class="row"><div class="grow"><b>{{ st.name }}</b><small>{% if st.min_qty is not none %}min {{ st.min_qty|n }}{% endif %}</small></div>
+<div class="qty"><form method="post" action="/pantry/{{ st.id }}/adjust" class="inline"><input type="hidden" name="delta" value="-1"><button class="icon ghost sm" aria-label="One less">−</button></form>
+<b class="num {{ 'warn' if st.min_qty is not none and (st.qty or 0) < st.min_qty }}">{{ (st.qty or 0)|n }} {{ st.unit or '' }}</b>
+<form method="post" action="/pantry/{{ st.id }}/adjust" class="inline"><input type="hidden" name="delta" value="1"><button class="icon ghost sm" aria-label="One more">+</button></form></div></div>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0 0 8px">Filament, film, glaze, seeds… Set a minimum and it lands on your shopping list when low.</p>{% endif %}
+<form class="form" method="post" action="/projects/{{ p.id }}/stock" style="margin-top:10px"><label>Supply<input name="name" required placeholder="PLA filament, black"></label>
+<label>On hand<input name="qty" type="number" step="any" value="1"></label><label>Unit<input name="unit" placeholder="spool"></label><label>Min<input name="min_qty" type="number" step="any"></label><button class="ghost">{{ i('plus') }} Track</button></form></div></section>
+<section class="card">{{ head('Photos', 'images') }}<div class="card-b">
+{% if photos %}<div class="gallery" style="margin-bottom:10px">{% for ph in photos %}<figure><a href="/photos/{{ ph.id }}" target="_blank"><img src="/photos/{{ ph.id }}/thumb" alt="" loading="lazy"></a></figure>{% endfor %}</div>{% endif %}
+<form method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="project_id" value="{{ p.id }}"><input type="hidden" name="next" value="/projects/{{ p.id }}">
+<label class="btn ghost sm">{{ i('camera') }} Add photos<input type="file" name="files" accept="image/*" multiple class="sr-only" onchange="this.form.submit()"></label></form></div></section></div></div>
+<dialog class="panel" id="edit-p" aria-labelledby="ep-h"><form method="post" action="/projects">
+<div class="dlg-h"><h2 id="ep-h">Edit</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><input type="hidden" name="id" value="{{ p.id }}">{% include "_project_form.html" %}</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-p" class="danger">{{ i('trash') }} Delete</button><button>Save</button></div></form></dialog>
+<form id="del-p" method="post" action="/projects/{{ p.id }}/delete" onsubmit="return confirm('Delete this project?')" hidden></form>
+{% endblock %}

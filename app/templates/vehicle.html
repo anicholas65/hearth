@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% from "_macros.html" import i, money, head, empty %}
+{% block title %}{{ v.name }}{% endblock %}{% block content %}
+<a class="crumb" href="/vehicles">{{ i('back') }} Vehicles</a>
+<div class="page-head"><div><h1>{{ v.name }}</h1><p>{{ [v.year, v.make, v.model]|select|join(' ') }}{% if v.plate %} · {{ v.plate }}{% endif %}</p></div>
+<div class="actions"><button type="button" data-dialog="odo">{{ i('car') }} Log odometer</button><button type="button" class="ghost" data-dialog="edit-v">{{ i('pencil') }} Edit</button></div></div>
+<div class="facts">
+<div><span>Odometer</span><b class="num">{{ '{:,}'.format(s.odometer) ~ ' mi' if s.odometer else '—' }}</b><small>{{ s.log[0].date|nicedate if s.log else 'no readings yet' }}</small></div>
+<div><span>Miles tracked</span><b class="num">{{ '{:,}'.format(s.miles) if s.miles else '—' }}</b></div>
+<div><span>Spent</span><b>{{ money(s.spent) if s.spent else '$0' }}</b><small>service + expenses</small></div>
+<div><span>Cost per mile</span><b>{{ ('$%.2f'|format(s.cpm)) if s.cpm else '—' }}</b><small>{{ 'needs two readings' if not s.cpm }}</small></div></div>
+<div class="split"><div>
+<section class="card">{{ head('Maintenance', 'wrench') }}<div class="card-b">
+{% if s.due %}<div class="list">{% for t in s.due %}<div class="row"><div class="dot {{ 'warn' if t.due_now else 'acc' }}">{{ i('wrench') }}</div>
+<div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name|cap }}</a><small>{% if t.interval_miles %}every {{ '{:,}'.format(t.interval_miles) }} mi{% endif %}{% if t.interval_miles and t.interval_days < 3650 %} or {% endif %}{% if t.interval_days < 3650 %}{{ t.interval_days|repeat|lower }}{% endif %} ·
+{% if t.due_now %}<b class="warn">due now</b>{% else %}{% if t.miles_left is not none %}{{ '{:,}'.format(t.miles_left) }} mi{% endif %}{% if t.miles_left is not none and t.interval_days < 3650 %} or {% endif %}{% if t.interval_days < 3650 %}{{ t.days_left }} days{% endif %} left, whichever first{% endif %}</small></div>
+<button type="button" class="ghost sm" data-dialog="done-{{ t.id }}">{{ i('check') }} Done</button></div>
+<dialog class="sheet" id="done-{{ t.id }}" aria-label="Log {{ t.name }}"><form method="post" action="/tasks/{{ t.id }}/done">
+<div class="dlg-h"><h2>{{ t.name|cap }}</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b"><input type="hidden" name="next" value="/vehicles/{{ v.id }}"><div class="form">
+<label>Date<input type="date" name="done_on" value="{{ today }}"></label><label>Odometer<input name="odometer" type="number" inputmode="numeric" value="{{ s.odometer or '' }}"></label>
+<label>Cost<input name="cost" type="number" step="0.01" inputmode="decimal"></label>
+<label>Shop<select name="contractor_id"><option value="">DIY</option>{% for c in contractors %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label></div></div>
+<div class="dlg-f"><button>{{ i('check') }} Log service</button></div></form></dialog>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0 0 10px">Add what this vehicle needs: oil change every 5,000 mi or 6 months, tire rotation, inspection…</p>{% endif %}
+<form class="form" method="post" action="/vehicles/{{ v.id }}/maintenance" style="margin-top:10px">
+<label>Service<input name="name" required placeholder="Oil change"></label><label>Every (mi)<input name="every_miles" type="number" inputmode="numeric" placeholder="5000"></label>
+<label>or every (months)<input name="every_months" type="number" inputmode="numeric" placeholder="6"></label><button class="ghost">{{ i('plus') }} Add</button></form>
+</div></section>
+<section class="card">{{ head('Service history', 'clock') }}<div class="card-b">
+{% if s.services or s.expenses %}<div class="list">{% for x in s.services %}<div class="row"><div class="dot ok">{{ i('check') }}</div><div class="grow"><b>{{ x.title|cap }}</b><small>{{ x.d|nicedate }}{% if x.odometer %} · {{ '{:,}'.format(x.odometer) }} mi{% endif %}{% if x.contractor %} · {{ x.contractor }}{% endif %}</small></div>{% if x.cost %}<b class="num">{{ money(x.cost) }}</b>{% endif %}</div>{% endfor %}
+{% for x in s.expenses %}<div class="row"><div class="dot">{{ i('wallet') }}</div><div class="grow"><b>{{ x.title or 'Expense' }}</b><small>{{ x.d|nicedate }}{{ ' · ' ~ x.category if x.category }}</small></div><b class="num">{{ money(x.cost) }}</b></div>{% endfor %}</div>
+{% else %}{% call empty('clock', 'No services logged yet.') %}{% endcall %}{% endif %}
+<form class="form" method="post" action="/budget/entries" style="margin-top:12px"><input type="hidden" name="kind" value="expense"><input type="hidden" name="vehicle_id" value="{{ v.id }}"><input type="hidden" name="next" value="/vehicles/{{ v.id }}">
+<label>Other expense<input name="note" placeholder="Fuel, registration, tires"></label><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal"></label>
+<input type="hidden" name="category" value="Vehicle"><button class="ghost">{{ i('plus') }} Add</button></form>
+</div></section></div>
+<div><section class="card">{{ head('Odometer log', 'car') }}<div class="card-b">
+{% if s.log %}<div class="list">{% for r in s.log[:12] %}<div class="row"><div class="grow">{{ r.date|nicedate }}</div><b class="num">{{ '{:,}'.format(r.miles|int) }} mi</b></div>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0">Log the odometer now and then; Hearth works out cost per mile and mileage-based service.</p>{% endif %}</div></section>
+<section class="card">{{ head('Photos', 'images') }}<div class="card-b">
+{% if photos %}<div class="gallery" style="margin-bottom:10px">{% for p in photos %}<figure><a href="/photos/{{ p.id }}" target="_blank"><img src="/photos/{{ p.id }}/thumb" alt="" loading="lazy"></a></figure>{% endfor %}</div>{% endif %}
+<form method="post" action="/photos" enctype="multipart/form-data"><input type="hidden" name="vehicle_id" value="{{ v.id }}"><input type="hidden" name="next" value="/vehicles/{{ v.id }}">
+<label class="btn ghost sm">{{ i('camera') }} Add photo<input type="file" name="files" accept="image/*" capture="environment" multiple class="sr-only" onchange="this.form.submit()"></label></form></div></section></div></div>
+<dialog class="sheet" id="odo" aria-labelledby="odo-h"><form method="post" action="/vehicles/{{ v.id }}/odometer">
+<div class="dlg-h"><h2 id="odo-h">Log odometer</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b form"><label>Miles<input name="miles" type="number" inputmode="numeric" required value="{{ s.odometer or '' }}"></label><label>Date<input name="on" type="date" value="{{ today }}"></label></div>
+<div class="dlg-f"><button>Save</button></div></form></dialog>
+<dialog class="panel" id="edit-v" aria-labelledby="ev-h"><form method="post" action="/vehicles">
+<div class="dlg-h"><h2 id="ev-h">Edit vehicle</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><input type="hidden" name="id" value="{{ v.id }}">{% include "_vehicle_form.html" %}</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-v" class="danger">{{ i('trash') }} Remove</button><button>Save</button></div></form></dialog>
+<form id="del-v" method="post" action="/vehicles/{{ v.id }}/delete" onsubmit="return confirm('Remove this vehicle and its maintenance tasks?')" hidden></form>
+{% endblock %}
