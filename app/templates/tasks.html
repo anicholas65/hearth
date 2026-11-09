@@ -19,19 +19,28 @@
 <a class="btn ghost sm" href="/tasks/{{ l.task_id }}?log={{ l.id }}#log-details" aria-label="Edit details for {{ l.task_name }} on {{ l.done_on }}">{{ i('pencil') }}</a></div>{% endfor %}</div></div></section>
 {% else %}{% call blank_state('done', 'Nothing completed yet', 'When you mark a task done, it shows up here with its cost and who did it.') %}{% endcall %}{% endif %}
 
-{% elif rows %}<div role="list">{% for t in rows %}
-<div class="trow {{ 'overdue' if t.next_due < today }}" role="listitem">
-<form method="post" action="/tasks/{{ t.id }}/done" class="inline"><input type="hidden" name="next" value="/tasks?show={{ show }}&sort={{ sort }}">
+{% elif rows %}
+{% if pile and show != 'completed' %}<div class="card" role="status"><div class="card-b actions" style="justify-content:space-between;padding-top:14px">
+<span>{{ i('calendar') }} <b>{{ pile[1] }} chores</b> are due on {{ pile[0]|nicedate }}. Spread them out across their intervals?</span>
+<form method="post" action="/tasks/rebalance" class="inline"><button class="sm">{{ i('repeat') }} Rebalance schedule</button></form></div></div>{% endif %}
+<div role="list" class="tlist">{% for t in rows %}{% set chore = t.kind != 'safety' and t.interval_days > 0 %}{% set f = fresh.get(t.id, 1) %}
+<div class="trow swipe {{ 'overdue' if not chore and t.next_due < today }}" role="listitem" data-id="{{ t.id }}" data-name="{{ t.name }}">
+<form method="post" action="/tasks/{{ t.id }}/done" class="inline done-form"><input type="hidden" name="next" value="/tasks?show={{ show }}&sort={{ sort }}">
 <button class="done-btn" title="Mark “{{ t.name }}” done" aria-label="Mark {{ t.name }} done">{{ i('check') }}</button></form>
-<div class="grow"><a href="/tasks/{{ t.id }}">{{ t.name|cap }}</a>
+<div class="grow"><a href="/tasks/{{ t.id }}" style="view-transition-name:task-{{ t.id }}">{{ t.name|cap }}</a>
 <div class="meta">
-<span class="{{ 'bad' if t.next_due < today else 'warn' if t.next_due == today }}">{{ i('alert' if t.next_due < today else 'calendar') }} {{ t.next_due|duein }}</span>
+{% if chore %}<span class="freshwrap" title="Freshness"><span class="fresh" aria-hidden="true"><i style="width:{{ (f * 100)|round(1) }}%"></i></span>
+<span>{{ 'Ready' if t.next_due <= today else t.next_due|duein }}</span></span>
+{% else %}<span class="{{ 'bad' if t.next_due < today else 'warn' if t.next_due == today }}">{{ i('alert' if t.next_due < today else 'calendar') }} {{ t.next_due|duein }}</span>{% endif %}
 <span>{{ i('repeat') }} {{ t.interval_days|repeat }}</span>
+{% if t.kind == 'safety' %}<span class="badge copper">{{ i('shield') }} Safety</span>{% endif %}
 {% if t.item_name %}<span>{{ i('box') }} {{ t.item_name }}{% if t.room_name %} · {{ t.room_name }}{% endif %}</span>{% endif %}
 {% if t.priority %}<span class="prio">{{ i('flag') }} High priority</span>{% endif %}
 </div></div>
-<a class="btn ghost sm hide-sm" href="/tasks/{{ t.id }}">Details</a>
+<form method="post" action="/tasks/{{ t.id }}/snooze" class="inline snooze-form"><input type="hidden" name="next" value="/tasks?show={{ show }}&sort={{ sort }}">
+<button class="ghost sm hide-sm" title="Snooze {{ '1 day' if t.kind == 'safety' else '3 days' }}">{{ i('clock') }} Snooze</button></form>
 </div>{% endfor %}</div>
+<p class="muted small hide-lg" style="margin-top:8px">Tip: swipe a task right to mark it done, left to snooze.</p>
 {% else %}
 {% if n_all == 0 %}{% call blank_state('maintenance', 'Keep your home running smoothly', 'Start with 12 common maintenance tasks (filters, detectors, gutters) or create your own.') %}
 <form method="post" action="/tasks/seed" class="inline"><button>{{ i('plus') }} Add common tasks</button></form><button type="button" class="ghost" data-dialog="new-task">New task</button>{% endcall %}

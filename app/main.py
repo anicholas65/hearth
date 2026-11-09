@@ -175,13 +175,13 @@ THEMES = {  # key: (label, swatch colours)
     "rose": ("Rose", _hsl_swatch(345, 58)), "slate": ("Slate", _hsl_swatch(215, 18)),
 }
 SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
-    "home": ("Home", "home", []),
-    "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar")]),
-    "organize": ("Organize", "box", [("/items", "Inventory", "box"), ("/shopping", "Shopping", "cart"),
-                                     ("/documents", "Documents", "file"), ("/gallery", "Photos", "images"),
-                                     ("/contractors", "Contractors", "users")]),
-    "finances": ("Finances", "wallet", [("/budget", "Budget", "wallet"),
-                                        ("/budget?view=forecast", "Forecast", "chart")]),
+    "home": ("Today", "home", []),
+    "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar"),
+                                        ("/shopping", "Shopping", "cart")]),
+    "organize": ("Stuff", "box", [("/items", "Inventory", "box"), ("/documents", "Documents", "file"),
+                                  ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users")]),
+    "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"),
+                                     ("/budget?view=forecast", "Forecast", "chart")]),
 }
 
 
@@ -205,7 +205,7 @@ def render(request: Request, name: str, **ctx):
     t = request.cookies.get("theme")
     m = request.cookies.get("mode")
     ctx["theme"] = t if t in THEMES else "hearth"
-    ctx["mode"] = m if m in MODES else "auto"
+    ctx["mode"] = m if m in MODES else "dark"  # dark by default; light/auto in Settings
     ctx["themes"] = THEMES
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
                      "repo": REPO_URL}
@@ -224,7 +224,8 @@ def render(request: Request, name: str, **ctx):
     with get_db() as db:
         ctx["nav_counts"] = {
             "shopping": db.execute("SELECT COUNT(*) FROM shopping_items WHERE status='needed'").fetchone()[0],
-            "overdue": db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL",
+            "overdue": db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL "
+                                  "AND kind='safety'",
                                   (ctx["today"],)).fetchone()[0]}
     return templates.TemplateResponse(request, name, ctx)
 
@@ -265,6 +266,23 @@ def service_worker():
 def setup_dismiss():
     set_setting("setup_dismissed", "1")
     return back("/")
+
+
+@app.get("/palette")
+def palette_suggest(q: str = ""):
+    from . import palette
+    action = palette.interpret(q)
+    groups = search_mod.search(q, limit=4) if len(q.strip()) >= 2 else []
+    hits = [{"title": r["title"], "sub": r.get("sub"), "href": r["href"], "group": g["label"], "icon": g["icon"]}
+            for g in groups for r in g["rows"]][:8]
+    return {"action": action, "results": hits}
+
+
+@app.post("/palette/run")
+async def palette_run(request: Request):
+    from . import palette
+    body = await request.json() if "json" in request.headers.get("content-type", "") else dict(await request.form())
+    return palette.run(str(body.get("text", "")))
 
 
 @app.get("/search")
@@ -326,18 +344,32 @@ def tasks_page(request: Request, show: str = "upcoming", sort: str = "due"):
             "name": lambda t: t["name"].lower()}[sort if sort in dict(TASK_SORTS) else "due"]
     rows = sorted(groups.get(show, []), key=keyf)
     counts = {k: len(v) for k, v in groups.items()}
+    by_day: dict[str, int] = {}
+    for t in active:
+        if t["kind"] == "chore" and t["interval_days"] > 0:
+            by_day[t["next_due"]] = by_day.get(t["next_due"], 0) + 1
+    pile = max(by_day.items(), key=lambda kv: kv[1], default=(None, 0))
     counts["completed"] = sum(1 for l in logs if l["done_on"] >= (today - timedelta(days=90)).isoformat())
     return render(request, "tasks.html", rows=rows, logs=logs, show=show, sort=sort, filters=TASK_FILTERS,
                   sorts=TASK_SORTS, counts=counts, items=items, presets=plan.PRESETS, n_all=n_all,
-                  today_d=today)
+                  today_d=today, pile=pile if pile[1] >= 3 else None,
+                  fresh={t["id"]: plan.freshness(t["next_due"], t["interval_days"], today) for t in active})
 
 
 def _task_fields(form, fallback_interval: int | None = None):
     legacy = form.get("interval_days")  # older forms/clients post the raw day count
     interval = plan.parse_repeat(form.get("repeat"), form.get("repeat_custom"),
                                  int(legacy) if legacy not in (None, "") else fallback_interval)
-    return dict(name=(form.get("name") or "").strip(), interval_days=interval,
-                next_due=blank(form.get("next_due")) or date.today().isoformat(),
+    due = blank(form.get("next_due"))
+    if not due:
+        if interval > 0:
+            with get_db() as db:
+                taken = [r[0] for r in db.execute("SELECT next_due FROM tasks WHERE completed_at IS NULL")]
+            due = plan.stagger_date(interval, taken)
+        else:
+            due = date.today().isoformat()
+    return dict(name=(form.get("name") or "").strip(), interval_days=interval, next_due=due,
+                kind="safety" if form.get("kind") == "safety" else "chore",
                 item_id=num(form.get("item_id"), int), notes=blank(form.get("notes")),
                 priority=1 if form.get("priority") else 0)
 
@@ -350,8 +382,8 @@ async def task_create(request: Request, bg: BackgroundTasks):
         raise HTTPException(400, "Give the task a name.")
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO tasks (name, interval_days, next_due, item_id, notes, priority) VALUES (?,?,?,?,?,?)",
-            (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"], f["priority"]))
+            "INSERT INTO tasks (name, interval_days, next_due, item_id, notes, priority, kind) VALUES (?,?,?,?,?,?,?)",
+            (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"], f["priority"], f["kind"]))
     bg.add_task(gcal.sync_task, cur.lastrowid)
     nxt = safe_next(form.get("next"), "/tasks?show=all")
     return back(toast_url(nxt, f"Added “{f['name']}”"))
@@ -362,34 +394,96 @@ def task_seed(bg: BackgroundTasks):
     today = date.today()
     with get_db() as db:
         existing = {r[0] for r in db.execute("SELECT name FROM tasks")}
-        new = [(n, d, (today + timedelta(days=min(d, 30))).isoformat())
-               for n, d in DEFAULT_TASKS if n not in existing]
-        db.executemany("INSERT INTO tasks (name, interval_days, next_due) VALUES (?,?,?)", new)
+        taken = [r[0] for r in db.execute("SELECT next_due FROM tasks WHERE completed_at IS NULL")]
+        new = []
+        for n, d in DEFAULT_TASKS:
+            if n in existing:
+                continue
+            due = plan.stagger_date(d, taken, today)  # spread across the interval, not all on one day
+            taken.append(due)
+            kind = "safety" if any(w in n.lower() for w in ("smoke", "co ", "extinguisher", "gfci")) else "chore"
+            new.append((n, d, due, kind))
+        db.executemany("INSERT INTO tasks (name, interval_days, next_due, kind) VALUES (?,?,?,?)", new)
     bg.add_task(gcal.sync_all)
     return back(toast_url("/tasks?show=all", f"Added {len(new)} common home tasks"))
 
 
-@app.post("/tasks/{task_id}/done")
-def task_done(bg: BackgroundTasks, task_id: int, done_on: str = Form(None), cost: str = Form(None),
-              contractor_id: str = Form(None), notes: str = Form(None), next: str = Form(None)):
-    done = blank(done_on) or date.today().isoformat()
+def complete_task(task_id: int, done: str, cost=None, contractor_id=None, notes=None, odometer=None) -> tuple:
+    """Log a completion and reschedule (recurring) or close (one-time). Returns (task row, log id)."""
     with get_db() as db:
         t = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         if not t:
             raise HTTPException(404)
         cur = db.execute(
-            "INSERT INTO task_logs (task_id, done_on, cost, contractor_id, notes) VALUES (?,?,?,?,?)",
-            (task_id, done, num(cost), num(contractor_id, int), blank(notes)))
-        log_id = cur.lastrowid
+            "INSERT INTO task_logs (task_id, done_on, cost, contractor_id, notes, odometer) VALUES (?,?,?,?,?,?)",
+            (task_id, done, cost, contractor_id, notes, odometer))
         if t["interval_days"] > 0:
             nxt = date.fromisoformat(done) + timedelta(days=t["interval_days"])
-            db.execute("UPDATE tasks SET next_due=?, last_notified=NULL WHERE id=?", (nxt.isoformat(), task_id))
-            bg.add_task(gcal.sync_task, task_id)
-        else:  # one-time task: complete it and take it off the calendar
+            db.execute("UPDATE tasks SET next_due=?, last_notified=NULL, snoozed_until=NULL WHERE id=?",
+                       (nxt.isoformat(), task_id))
+            if t["interval_miles"] and odometer:
+                db.execute("UPDATE tasks SET next_due_miles=? WHERE id=?", (odometer + t["interval_miles"], task_id))
+        else:
             db.execute("UPDATE tasks SET completed_at=?, gcal_event_id=NULL WHERE id=?", (done, task_id))
-            bg.add_task(gcal.delete_event, t["gcal_event_id"])
-    return back(toast_url(safe_next(next, "/tasks"), f"Done: {t['name']}",
-                          "Add details", f"/tasks/{task_id}?log={log_id}#log-details"))
+        log_id = cur.lastrowid
+    # calendar sync after the write commits (it opens its own connection)
+    if t["interval_days"] > 0:
+        gcal.sync_task(task_id)
+    elif t["gcal_event_id"]:
+        gcal.delete_event(t["gcal_event_id"])
+    return t, log_id
+
+
+def create_task_simple(name: str, interval: int) -> int:
+    with get_db() as db:
+        taken = [r[0] for r in db.execute("SELECT next_due FROM tasks WHERE completed_at IS NULL")]
+        due = plan.stagger_date(interval, taken) if interval else date.today().isoformat()
+        return db.execute("INSERT INTO tasks (name, interval_days, next_due) VALUES (?,?,?)",
+                          (name, interval, due)).lastrowid
+
+
+@app.post("/tasks/{task_id}/done")
+def task_done(bg: BackgroundTasks, task_id: int, done_on: str = Form(None), cost: str = Form(None),
+              contractor_id: str = Form(None), notes: str = Form(None), next: str = Form(None),
+              odometer: str = Form(None)):
+    done = blank(done_on) or date.today().isoformat()
+    t, log_id = complete_task(task_id, done, num(cost), num(contractor_id, int), blank(notes), num(odometer, int))
+    with get_db() as db:
+        left = db.execute("SELECT COUNT(*) FROM tasks WHERE completed_at IS NULL AND next_due <= ?",
+                          (date.today().isoformat(),)).fetchone()[0]
+    dest = safe_next(next, "/tasks")
+    if left == 0:  # that was the last thing due today
+        dest += ("&" if "?" in dest else "?") + "cleared=1"
+    return back(toast_url(dest, f"Done: {t['name']}", "Add details", f"/tasks/{task_id}?log={log_id}#log-details"))
+
+
+@app.post("/tasks/rebalance")
+def tasks_rebalance(bg: BackgroundTasks):
+    """Spread recurring chores across their intervals. Safety tasks keep their hard due dates."""
+    with get_db() as db:
+        chores = [dict(r) for r in db.execute(
+            "SELECT id, interval_days FROM tasks WHERE completed_at IS NULL AND interval_days > 0 AND kind='chore'")]
+        fixed = [r[0] for r in db.execute("SELECT next_due FROM tasks WHERE completed_at IS NULL AND kind='safety'")]
+        moves = plan.rebalance(chores, fixed)
+        db.executemany("UPDATE tasks SET next_due=?, last_notified=NULL WHERE id=?", [(d, i) for i, d in moves.items()])
+    bg.add_task(gcal.sync_all)
+    return back(toast_url("/tasks?show=all", f"Rebalanced {len(moves)} chores across their intervals"))
+
+
+@app.post("/tasks/{task_id}/snooze")
+def task_snooze(request: Request, bg: BackgroundTasks, task_id: int, days: int = Form(3), next: str = Form(None)):
+    with get_db() as db:
+        t = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if not t:
+            raise HTTPException(404)
+        days = 1 if t["kind"] == "safety" else max(1, min(days, 30))  # safety work can't drift far
+        base = max(date.fromisoformat(t["next_due"]), date.today())
+        until = (base + timedelta(days=days)).isoformat()
+        db.execute("UPDATE tasks SET next_due=?, snoozed_until=?, last_notified=NULL WHERE id=?", (until, until, task_id))
+    bg.add_task(gcal.sync_task, task_id)
+    if request.headers.get("x-requested-with") == "fetch":
+        return Response(status_code=204)
+    return back(toast_url(safe_next(next, "/tasks"), f"Snoozed until {_nicedate(until)}"))
 
 
 @app.post("/tasks/{task_id}/reopen")
@@ -481,8 +575,9 @@ async def task_update(request: Request, bg: BackgroundTasks, task_id: int):
         if not cur:
             raise HTTPException(404)
         f = _task_fields(form, cur[0])
-        db.execute("UPDATE tasks SET name=?, interval_days=?, next_due=?, item_id=?, notes=?, priority=? WHERE id=?",
-                   (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"], f["priority"], task_id))
+        db.execute("UPDATE tasks SET name=?, interval_days=?, next_due=?, item_id=?, notes=?, priority=?, kind=? "
+                   "WHERE id=?", (f["name"], f["interval_days"], f["next_due"], f["item_id"], f["notes"],
+                                  f["priority"], f["kind"], task_id))
     bg.add_task(gcal.sync_task, task_id)
     return back(toast_url(f"/tasks/{task_id}", "Saved"))
 
@@ -628,6 +723,30 @@ def _done(request: Request, url: str):
     return back(url)
 
 
+def shopping_add_text(lk: str, raw: str, qty=None, category=None, store=None, note=None, price=None,
+                      item_id=None, barcode=None) -> int:
+    """Add one or more comma/line separated items to a list. Duplicates refresh qty/note. Returns # added."""
+    added = 0
+    with get_db() as db:
+        for part in [p for chunk in raw.splitlines() for p in chunk.split(",")]:
+            if not part.strip():
+                continue
+            name, q = shopping.parse_quick(part)
+            q = qty or q
+            cat = category or shopping.guess_category(name, lk)
+            dup = db.execute("SELECT id FROM shopping_items WHERE list=? AND status='needed' "
+                             "AND lower(name)=lower(?)", (lk, name)).fetchone()
+            if dup:
+                db.execute("UPDATE shopping_items SET qty=COALESCE(?, qty), note=COALESCE(?, note) WHERE id=?",
+                           (q, note, dup[0]))
+                continue
+            db.execute(
+                "INSERT INTO shopping_items (list, name, qty, category, store, note, price, item_id, added_at, barcode) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)", (lk, name, q, cat, store, note, price, item_id, now_s(), barcode))
+            added += 1
+    return added
+
+
 @app.post("/shopping")
 async def shopping_add(request: Request):
     f = await request.form()
@@ -636,27 +755,8 @@ async def shopping_add(request: Request):
     if not raw:
         raise HTTPException(400, "name required")
     nxt = f.get("next") or f"/shopping?list={lk}"
-    added = 0
-    with get_db() as db:
-        # one item per line or comma, so a whole list can be pasted at once
-        for part in [p for chunk in raw.splitlines() for p in chunk.split(",")]:
-            if not part.strip():
-                continue
-            name, qty = shopping.parse_quick(part)
-            qty = blank(f.get("qty")) or qty
-            cat = blank(f.get("category")) or shopping.guess_category(name, lk)
-            dup = db.execute("SELECT id FROM shopping_items WHERE list=? AND status='needed' "
-                             "AND lower(name)=lower(?)", (lk, name)).fetchone()
-            if dup:  # already on the list: just refresh qty/note
-                db.execute("UPDATE shopping_items SET qty=COALESCE(?, qty), note=COALESCE(?, note) "
-                           "WHERE id=?", (qty, blank(f.get("note")), dup[0]))
-                continue
-            db.execute(
-                "INSERT INTO shopping_items (list, name, qty, category, store, note, price, item_id, added_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (lk, name, qty, cat, blank(f.get("store")), blank(f.get("note")), num(f.get("price")),
-                 num(f.get("item_id"), int), now_s()))
-            added += 1
+    shopping_add_text(lk, raw, blank(f.get("qty")), blank(f.get("category")), blank(f.get("store")),
+                      blank(f.get("note")), num(f.get("price")), num(f.get("item_id"), int), blank(f.get("barcode")))
     return back(nxt if nxt.startswith("/") else f"/shopping?list={lk}")
 
 

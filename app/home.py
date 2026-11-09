@@ -28,10 +28,14 @@ def timeline(today: date | None = None, days: int = 14) -> list[dict]:
                 "SELECT t.*, i.name AS item_name FROM tasks t LEFT JOIN items i ON i.id=t.item_id "
                 "WHERE next_due <= ? AND t.completed_at IS NULL ORDER BY next_due", (horizon,)):
             d = date.fromisoformat(t["next_due"])
-            out.append(dict(kind="task", id=t["id"], title=t["name"], date=d, time=None,
+            safety = t["kind"] == "safety"
+            # chores past their date are simply "ready" (no red, no guilt); safety keeps hard dates
+            out.append(dict(kind="task", id=t["id"], title=t["name"], date=d if safety or d >= today else today,
+                            time=None, safety=safety, ready=not safety and d <= today,
+                            fresh=plan.freshness(t["next_due"], t["interval_days"], today),
                             sub=(t["item_name"] + " · " if t["item_name"] else "")
-                            + plan.repeat_label(t["interval_days"]),
-                            href=f"/tasks/{t['id']}", overdue=d < today))
+                            + ("Safety · " if safety else "") + plan.repeat_label(t["interval_days"]),
+                            href=f"/tasks/{t['id']}", overdue=safety and d < today))
         for a in db.execute(
                 "SELECT a.*, c.name AS contractor_name FROM appointments a "
                 "LEFT JOIN contractors c ON c.id=a.contractor_id "
@@ -61,6 +65,7 @@ def attention(events: list[dict], today: date | None = None) -> dict:
     return dict(
         overdue=sum(1 for e in events if e["kind"] == "task" and e["overdue"]),
         due_week=sum(1 for e in events if e["kind"] == "task" and not e["overdue"] and e["date"] <= week),
+        ready=sum(1 for e in events if e["kind"] == "task" and e.get("ready")),
         today_events=sum(1 for e in events if e["kind"] in ("appointment", "reminder") and e["date"] == today),
         warranties=sum(1 for e in events if e["kind"] == "warranty"),
     )
@@ -101,8 +106,8 @@ def insights(today: date | None = None) -> dict | None:
     year = str(today.year)
     with get_db() as db:
         n_tasks = db.execute("SELECT COUNT(*) FROM tasks WHERE completed_at IS NULL").fetchone()[0]
-        overdue = db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL",
-                             (today.isoformat(),)).fetchone()[0]
+        overdue = db.execute("SELECT COUNT(*) FROM tasks WHERE next_due < ? AND completed_at IS NULL "
+                             "AND kind='safety'", (today.isoformat(),)).fetchone()[0]  # chores never 'overdue'
         done90 = db.execute("SELECT COUNT(*) FROM task_logs WHERE done_on >= ?", (since,)).fetchone()[0]
         any_logs = db.execute("SELECT COUNT(*) FROM task_logs").fetchone()[0]
         spend = db.execute(
@@ -122,8 +127,8 @@ def insights(today: date | None = None) -> dict | None:
         return None
     # value None = no data to say anything; 0 = genuinely zero
     return dict(year=today.year,
-                schedule=None if not n_tasks else ("No overdue tasks" if not overdue else
-                                                   f"{overdue} overdue of {n_tasks}"),
+                schedule=None if not n_tasks else ("Nothing overdue" if not overdue else
+                                                   f"{overdue} safety task{'s' if overdue != 1 else ''} overdue"),
                 schedule_ok=n_tasks > 0 and not overdue,
                 done90=done90 if any_logs else None,
                 spend=spend if any_money else None,

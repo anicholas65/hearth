@@ -16,10 +16,10 @@
 <a class="brand" href="/" aria-label="Hearth home"><img src="{{ brand.icon }}" alt="" width="32" height="32"><span>Hearth</span></a>
 <nav class="primary" aria-label="Main">{% for key, (label, icon, pages) in sections.items() %}
 <a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}"{% if section == key %} aria-current="page"{% endif %}>{{ label }}{% if key == 'plan' and nav_counts.overdue %} <span class="cnt bad" aria-label="{{ nav_counts.overdue }} overdue">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}</nav>
-<form class="hsearch" action="/search" role="search">{{ i('search') }}<label class="sr-only" for="hsearch">Search Hearth</label><input name="q" id="hsearch" placeholder="Search everything" value="{{ q if q is defined else '' }}" autocomplete="off"><kbd aria-hidden="true">/</kbd></form>
+<form class="hsearch" action="/search" role="search">{{ i('search') }}<label class="sr-only" for="hsearch">Search or type a command</label><input name="q" id="hsearch" placeholder="Search or “add milk to list”" value="{{ q if q is defined else '' }}" autocomplete="off" readonly data-palette><kbd aria-hidden="true">/</kbd></form>
 <button type="button" class="ghost sm" id="install-btn" hidden>{{ i('download') }} Install app</button>
 <button type="button" class="newbtn" data-dialog="quick">{{ i('plus') }} New</button>
-<a class="iconbtn hide-lg" href="/search" aria-label="Search" style="margin-left:auto">{{ i('search') }}</a>
+<button type="button" class="iconbtn hide-lg" data-palette aria-label="Search or command" style="margin-left:auto">{{ i('search') }}</button>
 <a class="iconbtn {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings" aria-label="Settings" title="Settings">{{ i('settings') }}</a>
 </div>
 {% if section and sections[section][2] %}<nav class="subnav" aria-label="{{ sections[section][0] }}"><div class="bar">{% for path, label, icon in sections[section][2] %}
@@ -51,6 +51,13 @@
 <a href="/budget#new-funds">{{ i('banknote') }}Add funds</a>
 </div></dialog>
 
+<dialog class="sheet palette" id="palette" aria-label="Command palette">
+<div class="pal-in">{{ i('search') }}<input id="pal-q" placeholder="Search, or try “add eggs to list”, “log filter replaced 12/1”" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="pal-list"><kbd>esc</kbd></div>
+<ul id="pal-list" role="listbox" class="pal-list"></ul>
+<p class="pal-hint muted small">Enter to run · ↑↓ to choose · “go budget”, “buy coffee”, “new task clean vents every 3 months”</p>
+</dialog>
+<div class="celebrate" id="celebrate" hidden aria-live="polite"><div class="burst">{{ i('check') }}</div><b>All done for today</b></div>
+
 {% if msg %}<div class="toast" role="status" id="toast"><span>{{ msg }}</span>
 {% if request.query_params.get('act') and request.query_params.get('act_href', '').startswith('/') %}<a href="{{ request.query_params.get('act_href') }}">{{ request.query_params.get('act') }}</a>{% endif %}
 <button type="button" class="icon" aria-label="Dismiss" onclick="this.parentElement.remove()">{{ i('x') }}</button></div>{% endif %}
@@ -74,7 +81,6 @@
   document.addEventListener('keydown', e => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector('dialog[open]');
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === '/' && s && s.offsetParent) { e.preventDefault(); s.focus(); }
     if (e.key === 'n') { e.preventDefault(); document.getElementById('quick').showModal(); }
   });
   // #hash targets: open a dialog, or reveal + focus a section's first field
@@ -104,6 +110,83 @@
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; if (ib) ib.hidden = false; });
   ib?.addEventListener('click', async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; ib.hidden = true; });
   window.addEventListener('appinstalled', () => { if (ib) ib.hidden = true; });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // ---- command palette ----
+  const pal = document.getElementById('palette'), pq = document.getElementById('pal-q'), pl = document.getElementById('pal-list');
+  let sel = 0, items = [], timer = null;
+  const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  const draw = () => { pl.innerHTML = items.map((it, n) => `<li role="option" id="po${n}" aria-selected="${n === sel}" class="${n === sel ? 'on' : ''}" data-n="${n}">
+      <span class="pi">${it.kind === 'action' ? '›' : ''}</span><span class="grow"><b>${esc(it.title)}</b>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span><span class="muted small">${esc(it.group || '')}</span></li>`).join('');
+    pq.setAttribute('aria-activedescendant', 'po' + sel); };
+  const load = async q => {
+    if (!q.trim()) { items = []; pl.innerHTML = ''; return; }
+    pl.innerHTML = '<li class="skel"></li><li class="skel"></li><li class="skel"></li>';
+    const r = await fetch('/palette?q=' + encodeURIComponent(q)).then(r => r.json()).catch(() => null);
+    if (!r || pq.value !== q) return;
+    items = [{kind: 'action', title: r.action.label, group: r.action.kind === 'search' ? 'Search' : 'Action', action: r.action}]
+      .concat(r.results.map(x => ({kind: 'link', title: x.title, sub: x.sub, group: x.group, href: x.href})));
+    sel = 0; draw();
+  };
+  const runSel = async () => {
+    const it = items[sel]; if (!it) return;
+    if (it.kind === 'link') { location.href = it.href; return; }
+    const r = await fetch('/palette/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: pq.value})}).then(r => r.json());
+    location.href = r.message ? r.href + (r.href.includes('?') ? '&' : '?') + 'msg=' + encodeURIComponent(r.message) : r.href;
+  };
+  const openPal = () => { pal.showModal(); pq.value = ''; items = []; pl.innerHTML = ''; pq.focus(); };
+  document.querySelectorAll('[data-palette]').forEach(el => { el.addEventListener('focus', e => { e.target.blur(); openPal(); }); el.addEventListener('click', openPal); });
+  pq.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(pq.value), 120); });
+  pq.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, items.length - 1); draw(); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); draw(); e.preventDefault(); }
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); (items.length ? Promise.resolve() : load(pq.value)).then(runSel); }
+  });
+  pl.addEventListener('click', e => { const li = e.target.closest('li[data-n]'); if (li) { sel = +li.dataset.n; runSel(); } });
+  document.addEventListener('keydown', e => {
+    if (e.key !== '/' || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector('dialog[open]')) return;
+    e.preventDefault(); openPal();
+  }, true);
+
+  // ---- check-off: spring, collapse, then submit ----
+  document.querySelectorAll('form.done-form').forEach(f => f.addEventListener('submit', e => {
+    const row = f.closest('.trow, .tl'); if (!row || reduce || f.dataset.go) return;
+    e.preventDefault(); f.dataset.go = 1; row.classList.add('checking');
+    setTimeout(() => row.classList.add('collapse'), 200);
+    setTimeout(() => f.submit(), 400);
+  }));
+  // ---- swipe right = done, left = snooze (touch only) ----
+  document.querySelectorAll('.swipe[data-id]').forEach(row => {
+    let x0 = null, y0 = 0, dx = 0;
+    row.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; }, {passive: true});
+    row.addEventListener('touchmove', e => {
+      if (x0 === null) return; dx = e.touches[0].clientX - x0;
+      if (Math.abs(e.touches[0].clientY - y0) > Math.abs(dx)) { x0 = null; row.style.transform = ''; return; }
+      row.style.transform = `translateX(${dx}px)`; row.dataset.dir = dx > 0 ? 'done' : 'snooze';
+    }, {passive: true});
+    row.addEventListener('touchend', () => {
+      if (x0 === null) return; x0 = null;
+      if (Math.abs(dx) < 90) { row.style.transform = ''; delete row.dataset.dir; return; }
+      if (dx > 0) { const f = row.querySelector('form.done-form'); f.dataset.go = 1; row.classList.add('checking', 'collapse'); setTimeout(() => f.submit(), reduce ? 0 : 220); }
+      else { row.classList.add('collapse'); fetch(`/tasks/${row.dataset.id}/snooze`, {method: 'POST', headers: {'X-Requested-With': 'fetch'}})
+        .then(() => setTimeout(() => location.reload(), reduce ? 0 : 220)); }
+    });
+  });
+  // ---- one small celebration when the day is cleared ----
+  if (new URLSearchParams(location.search).get('cleared') === '1') {
+    const c = document.getElementById('celebrate'); c.hidden = false;
+    setTimeout(() => c.hidden = true, reduce ? 1500 : 1800);
+    const u = new URL(location); u.searchParams.delete('cleared'); history.replaceState(null, '', u);
+  }
+  // ---- number count-ups ----
+  if (!reduce) document.querySelectorAll('.countup[data-value]').forEach(el => {
+    const end = +el.dataset.value; if (!(end > 1)) return; const t0 = performance.now();
+    const step = t => { const k = Math.min(1, (t - t0) / 250); el.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+  // ---- image skeletons ----
+  document.querySelectorAll('.tile .ph img, .room .art img').forEach(img => {
+    if (img.complete) return; img.parentElement.classList.add('skel'); img.addEventListener('load', () => img.parentElement.classList.remove('skel'), {once: true});
+  });
   // toast: drop ?msg from the URL so refresh doesn't repeat it; auto-hide
   const t = document.getElementById('toast');
   if (t) {

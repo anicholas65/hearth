@@ -21,7 +21,7 @@ def test_pages_render(client):
 
 def test_task_lifecycle(client):
     client.post("/tasks", data={"name": "Filter", "interval_days": 90, "next_due": "2020-01-01"})
-    assert "Overdue by" in client.get("/tasks").text
+    assert "Ready" in client.get("/tasks").text  # chores never show red overdue
     client.post("/tasks/1/done", data={"done_on": "2026-01-01", "cost": "12.5"})
     from app.db import get_db
     with get_db() as db:
@@ -431,10 +431,12 @@ def test_home_attention_and_timeline(client):
     client.post("/items", data={"name": "TV", "warranty_until": (t + timedelta(days=20)).isoformat()})
     ev = home.timeline()
     assert [e["kind"] for e in ev] == ["task", "appointment", "task", "warranty"]
-    assert home.attention(ev) == {"overdue": 1, "due_week": 1, "today_events": 1, "warranties": 1}
+    assert ev[0]["ready"] and not ev[0]["overdue"]
+    # a past-due chore is "ready", not overdue (no red for chores); safety tasks keep hard dates
+    assert home.attention(ev) == {"overdue": 0, "due_week": 2, "ready": 1, "today_events": 1, "warranties": 1}
     html = client.get("/").text
     assert "Clean polish wine fridge" in html and "Brush stells" in html  # display capitalisation
-    assert "Overdue" in html and "Up next" in html and "3:00 PM" in html
+    assert "Up next" in html and "3:00 PM" in html
     from app.db import get_db
     with get_db() as db:  # stored exactly as typed
         assert db.execute("SELECT name FROM tasks WHERE id=1").fetchone()[0] == "clean polish wine fridge"
@@ -700,9 +702,11 @@ def test_insights_never_mislead(client):
     assert home.insights() is None  # brand-new home: no card at all
     client.post("/tasks", data={"name": "A", "repeat": "30", "next_due": "2099-01-01"})
     ins = home.insights()
-    assert ins["schedule"] == "No overdue tasks" and ins["done90"] is None and ins["spend"] is None
+    assert ins["schedule"] == "Nothing overdue" and ins["done90"] is None and ins["spend"] is None
     client.post("/tasks", data={"name": "B", "repeat": "30", "next_due": "2000-01-01"})
-    assert home.insights()["schedule"] == "1 overdue of 2"
+    assert home.insights()["schedule"] == "Nothing overdue"  # a late chore isn't 'overdue'
+    client.post("/tasks", data={"name": "Smoke test", "repeat": "30", "next_due": "2000-01-01", "kind": "safety"})
+    assert home.insights()["schedule"] == "1 safety task overdue"
     assert "%" not in client.get("/").text.split("Household insights")[1].split("</section>")[0]
 
 

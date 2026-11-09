@@ -5,11 +5,11 @@
 {% include "illus/home.svg" %}</section>
 
 <div class="att">
-{% if att.overdue %}<a class="bad" href="/tasks"><span class="lbl">Overdue</span><b>{{ att.overdue }}</b><span class="s">maintenance task{{ 's' if att.overdue != 1 }}</span></a>{% endif %}
-{% if att.due_week %}<a href="/tasks"><span class="lbl">Maintenance</span><b>{{ att.due_week }}</b><span class="s">due this week</span></a>{% endif %}
-{% if att.today_events %}<a href="/schedule"><span class="lbl">Schedule</span><b>{{ att.today_events }}</b><span class="s">event{{ 's' if att.today_events != 1 }} today</span></a>{% endif %}
-{% if att.warranties %}<a href="#upnext"><span class="lbl">Warranties</span><b>{{ att.warranties }}</b><span class="s">ending soon</span></a>{% endif %}
-{% if nav_counts.shopping %}<a href="/shopping"><span class="lbl">Shopping</span><b>{{ nav_counts.shopping }}</b><span class="s">item{{ 's' if nav_counts.shopping != 1 }} to get</span></a>{% endif %}
+{% if att.overdue %}<a class="bad" href="/tasks?show=overdue"><span class="lbl">Safety overdue</span><b class="countup" data-value="{{ att.overdue }}">{{ att.overdue }}</b><span class="s">maintenance task{{ 's' if att.overdue != 1 }}</span></a>{% endif %}
+{% if att.due_week %}<a href="/tasks"><span class="lbl">Chores</span><b class="countup" data-value="{{ att.due_week }}">{{ att.due_week }}</b><span class="s">{{ att.ready ~ ' ready now' if att.ready else 'this week' }}</span></a>{% endif %}
+{% if att.today_events %}<a href="/schedule"><span class="lbl">Schedule</span><b class="countup" data-value="{{ att.today_events }}">{{ att.today_events }}</b><span class="s">event{{ 's' if att.today_events != 1 }} today</span></a>{% endif %}
+{% if att.warranties %}<a href="#upnext"><span class="lbl">Warranties</span><b class="countup" data-value="{{ att.warranties }}">{{ att.warranties }}</b><span class="s">ending soon</span></a>{% endif %}
+{% if nav_counts.shopping %}<a href="/shopping"><span class="lbl">Shopping</span><b class="countup" data-value="{{ nav_counts.shopping }}">{{ nav_counts.shopping }}</b><span class="s">item{{ 's' if nav_counts.shopping != 1 }} to get</span></a>{% endif %}
 {% if not (att.overdue or att.due_week or att.today_events or att.warranties or nav_counts.shopping) %}<a class="calm" href="/tasks"><span class="dot ok">{{ i('check') }}</span><span><b>All caught up</b><br><span class="s">No overdue tasks, nothing scheduled today.</span></span></a>{% endif %}
 </div>
 
@@ -24,21 +24,22 @@
 <div class="home-grid">
 <section class="card" id="upnext">{{ head('Up next', 'clock', '<a class="badge" href="/schedule">Schedule</a>') }}<div class="card-b">
 {% if buckets %}{% for bucket, events in buckets.items() %}<div class="tl-group {{ 'bad' if bucket == 'Overdue' }}">{{ bucket }}</div>
-{% for e in events %}<div class="tl {{ e.kind }} {{ 'overdue' if e.overdue }}">
+{% for e in events %}<div class="tl swipe {{ e.kind }} {{ 'overdue' if e.overdue }}" {% if e.kind == 'task' %}data-id="{{ e.id }}" data-name="{{ e.title }}"{% endif %}>
 <div class="kind">{{ i({'task':'wrench','appointment':'calendar','reminder':'bell','warranty':'shield'}[e.kind]) }}</div>
-<div class="grow"><a href="{{ e.href }}">{{ e.title|cap }}</a><small>{{ e.date.isoformat()|nicedate }}{% if e.time %} · {{ e.time|nicetime }}{% endif %}{% if e.sub %} · {{ e.sub }}{% endif %}</small></div>
-{% if e.kind == 'task' %}<form method="post" action="/tasks/{{ e.id }}/done" class="inline"><button class="sm ghost" title="Mark done">{{ i('check') }}<span class="hide-sm">Done</span></button></form>{% endif %}
+<div class="grow"><a href="{{ e.href }}"{% if e.kind == 'task' %} style="view-transition-name:task-{{ e.id }}"{% endif %}>{{ e.title|cap }}</a><small>{% if e.ready %}Ready{% else %}{{ e.date.isoformat()|nicedate }}{% endif %}{% if e.time %} · {{ e.time|nicetime }}{% endif %}{% if e.sub %} · {{ e.sub }}{% endif %}</small>
+{% if e.kind == 'task' and not e.safety %}<span class="fresh" aria-hidden="true" style="margin-top:5px"><i style="width:{{ (e.fresh * 100)|round(1) }}%"></i></span>{% endif %}</div>
+{% if e.kind == 'task' %}<form method="post" action="/tasks/{{ e.id }}/done" class="inline done-form"><input type="hidden" name="next" value="/"><button class="sm ghost" title="Mark done">{{ i('check') }}<span class="hide-sm">Done</span></button></form>{% endif %}
 </div>{% endfor %}{% endfor %}
 {% else %}{% call blank_state('done', 'Nothing in the next two weeks', 'Add a task or appointment and it will show up here.') %}<a class="btn ghost" href="/tasks#new-task">{{ i('plus') }} Add task</a>{% endcall %}{% endif %}
 </div></section>
 
 <div>
-{% if show_setup %}<section class="card">{{ head('Get started', 'star', '<form method="post" action="/setup/dismiss" class="inline"><button class="sm ghost">Hide</button></form>') }}<div class="card-b">
-<div class="progress" role="progressbar" aria-label="Setup progress" aria-valuenow="{{ steps_done }}" aria-valuemin="0" aria-valuemax="{{ steps|length }}"><i style="width:{{ (steps_done / steps|length * 100)|round }}%"></i></div>
-<p class="muted small" style="margin:6px 0 4px">{{ steps_done }} of {{ steps|length }} done</p>
-{% if steps_done >= 4 %}<details class="more"><summary>Show remaining steps</summary>{% endif %}
-<div class="steps2">{% for st in steps if not (steps_done >= 4 and st.done) %}<a href="{{ st.href }}" class="{{ 'done' if st.done }}"><span class="ck">{{ i('check') }}</span><span><b>{{ st.title }}</b>{% if not st.done %}<small>{{ st.hint }}</small>{% endif %}</span></a>{% endfor %}</div>
-{% if steps_done >= 4 %}</details>{% endif %}
+{% if show_setup %}{% set pct = steps_done / steps|length %}<section class="card"><div class="card-b ring-card" style="padding-top:16px">
+<svg class="ring" viewBox="0 0 44 44" role="img" aria-label="Setup {{ steps_done }} of {{ steps|length }} done"><circle cx="22" cy="22" r="18" class="ring-bg"/>
+<circle cx="22" cy="22" r="18" class="ring-fg" stroke-dasharray="{{ (113.1 * pct)|round(1) }} 113.1"/><text x="22" y="26" text-anchor="middle">{{ steps_done }}/{{ steps|length }}</text></svg>
+<div class="grow"><b>Get started</b>{% for st in steps if not st.done %}{% if loop.first %}<small>Next: <a href="{{ st.href }}">{{ st.title }}</a></small>{% endif %}{% endfor %}
+<details class="more"><summary class="small">All steps</summary><div class="steps2">{% for st in steps %}<a href="{{ st.href }}" class="{{ 'done' if st.done }}"><span class="ck">{{ i('check') }}</span><span><b>{{ st.title }}</b>{% if not st.done %}<small>{{ st.hint }}</small>{% endif %}</span></a>{% endfor %}</div></details></div>
+<form method="post" action="/setup/dismiss" class="inline"><button class="icon ghost sm" aria-label="Hide setup">{{ i('x') }}</button></form>
 </div></section>{% endif %}
 
 {% if shop %}<section class="card">{{ head('Shopping list', 'cart', '<a class="badge" href="/shopping">Open</a>') }}<div class="card-b">
