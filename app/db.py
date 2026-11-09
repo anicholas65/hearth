@@ -151,6 +151,8 @@ def init_db() -> None:
             cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
             if col not in cols:
                 db.execute(ddl)
+    from .migrations import migrate_up
+    migrate_up(data_dir() / "hearth.db")
 
 
 def get_setting(key: str, default: str | None = None) -> str | None:

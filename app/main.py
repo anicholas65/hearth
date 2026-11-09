@@ -109,7 +109,7 @@ app = FastAPI(title="Hearth", lifespan=lifespan)
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
     user, pw = os.environ.get("HEARTH_USERNAME"), os.environ.get("HEARTH_PASSWORD")
-    if not (user and pw) or request.url.path == "/api/health":
+    if not (user and pw) or request.url.path.startswith("/api/"):  # /api/v1 uses device tokens
         return await call_next(request)
     try:
         scheme, _, cred = request.headers.get("authorization", "").partition(" ")
@@ -123,6 +123,9 @@ async def basic_auth(request: Request, call_next):
 
 
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+
+from .api import api as api_v1  # noqa: E402
+app.mount("/api/v1", api_v1)
 
 
 from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
