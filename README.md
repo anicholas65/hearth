@@ -2,6 +2,14 @@
 
 Self-hosted home manager for Unraid: maintenance reminders, home inventory, photos, documents & manuals, contractors, and budgeting. FastAPI + SQLite, single container.
 
+## What's new in 3.0 (prototype)
+- **REST API** at `/api/v1` for the Android client: device pairing, sync change feed, idempotent upserts, files. Contract: `docs/openapi.json`.
+- **Tailscale** remote access with HTTPS and tailnet sign-in (`docs/TAILSCALE.md`), installable **PWA** with an offline shopping list.
+- **Today · Plan · Stuff · Money**, staggered maintenance with Rebalance, freshness bars, command palette (`/`), swipe gestures.
+- **Capture**: barcode lookup, label and receipt reading (in-browser, or Claude with `ANTHROPIC_API_KEY`).
+- **Money**: sinking funds, cost of ownership, insurance claim packet PDF. **Pantry**, **Vehicles**, **Projects & Hobbies**.
+- `HEARTH_DEMO=1` runs on sample data in `/data/demo`. Details: `docs/PROTOTYPE_REPORT.md`.
+
 ## What's new in 2.1
 A full visual and usability refresh: new design system and light/dark themes, a new logo (opt-in in Settings), illustrations, task filters and repeat presets, one-time tasks, guided item creation, inventory search and filters, expense categories and receipts, an editable ledger, and a replacement forecast with 1–10 year periods. See [CHANGELOG.md](CHANGELOG.md) and [docs/HEARTH-2.1.md](docs/HEARTH-2.1.md).
 
@@ -54,6 +62,11 @@ Optional env overrides: `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE`. Tim
 | `NOTIFY_LEAD_DAYS` | `3` | days ahead to remind |
 | `NOTIFY_CHECK_HOURS` | `1` | check frequency |
 | `HEARTH_USERNAME` / `HEARTH_PASSWORD` | – | set both to enable basic auth |
+| `HEARTH_PUBLIC_URL` | – | address paired devices use (Tailscale HTTPS URL) |
+| `ANTHROPIC_API_KEY` | – | optional: Claude reads receipt/label photos |
+| `HEARTH_CLAUDE_MODEL` | `claude-opus-5-5` | model for photo reading |
+| `OCR_URL` / `OCR_PROVIDER` | – | alternative OCR service / force `claude` or `url` |
+| `HEARTH_DEMO` | `0` | `1` = sample data in `/data/demo` |
 | `PORT` | `8080` | |
 
 ## Dev

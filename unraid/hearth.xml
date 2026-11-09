@@ -12,7 +12,7 @@
   </Maintainer>
   <Support>https://github.com/anicholas65/hearth/issues</Support>
   <Project>https://github.com/anicholas65/hearth</Project>
-  <Overview>Self-hosted home manager by Alan Nicholas: recurring maintenance reminders, room-by-room inventory, photos, documents and manuals, contractors, budget and replacement forecasting, schedule with Google Calendar sync, and shopping lists. Notifications via Apprise (ntfy, Discord, email, Pushover...).</Overview>
+  <Overview>Self-hosted home manager by Alan Nicholas: recurring maintenance reminders, room-by-room inventory, photos, documents and manuals, contractors, budget and replacement forecasting, schedule with Google Calendar sync, shopping lists and pantry, vehicles, projects, fast capture (barcode, labels, receipts), a REST API for the Android app, and Tailscale remote access. Notifications via Apprise (ntfy, Discord, email, Pushover...).</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/anicholas65/hearth/main/unraid/hearth.xml</TemplateURL>
@@ -22,6 +22,10 @@
   <Config Name="Apprise URLs" Target="APPRISE_URLS" Default="" Mode="" Description="Comma-separated Apprise URLs, e.g. ntfy://ntfy.sh/my-topic" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Username" Target="HEARTH_USERNAME" Default="" Mode="" Description="Optional basic-auth username (set both username and password to enable)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Password" Target="HEARTH_PASSWORD" Default="" Mode="" Description="Optional basic-auth password" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Server URL for devices" Target="HEARTH_PUBLIC_URL" Default="" Mode="" Description="Optional. e.g. https://hearth.your-tailnet.ts.net (auto-detected when Unraid's Use Tailscale is on)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Anthropic API key (photo reading)" Target="ANTHROPIC_API_KEY" Default="" Mode="" Description="Optional. Claude reads receipt and label photos; leave empty to read them in the browser" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Claude model" Target="HEARTH_CLAUDE_MODEL" Default="claude-opus-5-5" Mode="" Description="Model for photo reading (e.g. claude-haiku-5-5 for lower cost)" Type="Variable" Display="advanced" Required="false" Mask="false">claude-opus-5-5</Config>
+  <Config Name="Demo mode" Target="HEARTH_DEMO" Default="0" Mode="" Description="1 = sample data in /data/demo (your real data is untouched)" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
   <Config Name="Reminder lead days" Target="NOTIFY_LEAD_DAYS" Default="3" Mode="" Description="Notify this many days before a task is due" Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
   <Config Name="Check interval (hours)" Target="NOTIFY_CHECK_HOURS" Default="1" Mode="" Description="How often to check for due tasks (each task notifies at most once per day)" Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
 </Container>

@@ -144,7 +144,8 @@ def seed_if_empty() -> bool:
                          "('3D printing', 'hobby', 'active', 'Bambu P1S in the office.', '[]')").lastrowid
         db.execute("INSERT INTO pantry_items (name, qty, unit, min_qty, category, project_id) VALUES "
                    "('PLA filament, black', 1, 'spool', 2, 'Consumables', ?)", (hob,))
-        db.execute("INSERT INTO settings (key, value) VALUES ('setup_dismissed', '0') "
-                   "ON CONFLICT(key) DO NOTHING")
+        from .shopping import pantry_restock_check
+        for (pid,) in db.execute("SELECT id FROM pantry_items").fetchall():
+            pantry_restock_check(db, pid)  # same rule as real use: below minimum -> on the list
     (data_dir() / "DEMO_DATA_ONLY").write_text("This folder holds Hearth demo data (HEARTH_DEMO=1).\n")
     return True

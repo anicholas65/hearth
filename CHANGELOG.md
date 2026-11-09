@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0 (prototype)
+- REST API v1 for the Android client: sync change feed, idempotent LWW upserts, soft deletes, files, device
+  pairing and tokens; OpenAPI in `docs/openapi.json`. Reversible migrations with automatic backups.
+- Tailscale remote access (native or sidecar), tailnet sign-in with loopback-only header trust, pairing QR.
+- PWA: offline shell, offline shopping list, install prompt, ntfy push config.
+- Today · Plan · Stuff · Money; staggered scheduling + Rebalance (fixes all seeded tasks due the same day);
+  freshness bars for chores, hard dates for safety tasks; command palette; swipe; motion; dark default.
+- Capture: barcode lookup, label/receipt reading (browser OCR or Claude), manual attach.
+- Sinking funds, cost of ownership, insurance claim packet PDF; pantry with minimums and use-soon; aisle
+  order per store; Vehicles; Projects & Hobbies; `HEARTH_DEMO=1` demo mode.
+
 ## 2.1.0
 **Design**
 - New design system: Hearth palette (Forest, Copper, Sage, Cream, Charcoal) as tokens, coordinated light/dark themes with WCAG AA contrast, consistent type scale, sentence-case labels, restrained cards and shadows.
