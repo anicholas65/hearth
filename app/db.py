@@ -121,8 +121,14 @@ MIGRATIONS = [
 ]
 
 
+def demo_mode() -> bool:
+    return os.environ.get("HEARTH_DEMO") == "1"
+
+
 def data_dir() -> Path:
     d = Path(os.environ.get("DATA_DIR", "./data"))
+    if demo_mode():  # demo data lives in its own folder; the real hearth.db is never opened
+        d = d / "demo"
     (d / "uploads").mkdir(parents=True, exist_ok=True)
     return d
 

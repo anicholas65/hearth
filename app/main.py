@@ -91,8 +91,13 @@ DEFAULT_TASKS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from .db import demo_mode
+    if demo_mode():
+        from .demo import seed_if_empty
+        seed_if_empty()
     task = None
-    if os.environ.get("NOTIFY_DISABLED") != "1":
+    from .db import demo_mode as _demo
+    if os.environ.get("NOTIFY_DISABLED") != "1" and not _demo():  # demo never notifies or syncs
         task = asyncio.create_task(notify.notify_loop())
         if gcal.configured():
             asyncio.create_task(asyncio.to_thread(gcal.sync_all))
@@ -214,6 +219,8 @@ def render(request: Request, name: str, **ctx):
                     "favicon": "/static/favicon.svg" if v2 else "/static/icon.png"}
     ctx["msg"] = request.query_params.get("msg")
     ctx["member"] = request.scope.get("hearth_member")
+    from .db import demo_mode
+    ctx["demo"] = demo_mode()
     ctx["section"] = section_for(request.url.path)
     path, q = request.url.path, request.url.query
     full = path + (f"?{q}" if q else "")
@@ -294,7 +301,7 @@ def capture_page(request: Request, mode: str = "barcode", code: str = ""):
         rooms = db.execute("SELECT id, name FROM rooms ORDER BY name").fetchall()
     return render(request, "capture.html", mode=mode if mode in ("barcode", "label", "receipt") else "barcode",
                   items=items, rooms=rooms, categories=finance.expense_categories(), code=code,
-                  ocr_server=capture.ocr_available())
+                  ocr_server=capture.ocr_available(), ocr_provider=capture.ocr_provider())
 
 
 @app.get("/capture/lookup")
@@ -318,11 +325,21 @@ async def capture_parse(request: Request):
 
 
 @app.post("/capture/ocr")
-async def capture_ocr(image: UploadFile = File(...)):
+async def capture_ocr(image: UploadFile = File(...), mode: str = Form("receipt")):
+    """Server-side reading: Claude vision (text + fields) or an OCR_URL service (text only)."""
     from . import capture
-    if not capture.ocr_available():
-        raise HTTPException(501, "Server OCR not configured (set OCR_URL); the browser reads the text instead")
-    return {"text": capture.ocr_remote(await image.read(), image.content_type or "image/jpeg")}
+    provider = capture.ocr_provider()
+    if not provider:
+        raise HTTPException(501, "Server reading isn't configured; the browser reads the text instead")
+    data = await image.read()
+    if provider == "claude":
+        import asyncio as _asyncio
+        try:
+            out = await _asyncio.to_thread(capture.claude_read, data, mode)
+        except RuntimeError as e:
+            raise HTTPException(502, str(e))
+        return {**out, "provider": "claude"}
+    return {"text": capture.ocr_remote(data, image.content_type or "image/jpeg"), "provider": "url"}
 
 
 @app.post("/capture/barcode")

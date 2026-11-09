@@ -72,3 +72,27 @@ def test_projects_budget_materials_stock_photos(client):
 def test_stuff_chips_include_vehicles_and_hobbies(client):
     html = client.get("/items").text
     assert 'href="/vehicles"' in html and 'href="/projects"' in html and ">Stuff<" in html
+
+
+def test_demo_mode_is_isolated(tmp_path, monkeypatch):
+    import sqlite3
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTIFY_DISABLED", "1")
+    from app.main import app
+    with TestClient(app) as c:  # real data first
+        c.post("/items", data={"name": "My real fridge"})
+    monkeypatch.setenv("HEARTH_DEMO", "1")
+    monkeypatch.setenv("APPRISE_URLS", "json://localhost:1/never")
+    with TestClient(app) as c:
+        html = c.get("/").text
+        assert "Demo mode" in html
+        inv = c.get("/items").text
+        assert "Refrigerator" in inv and "My real fridge" not in inv
+        from app import gcal, notify
+        assert notify.send("t", "b") is False and gcal.enabled() is False
+    assert (tmp_path / "demo" / "hearth.db").exists() and (tmp_path / "demo" / "DEMO_DATA_ONLY").exists()
+    real = sqlite3.connect(tmp_path / "hearth.db").execute("SELECT name FROM items").fetchall()
+    assert real == [("My real fridge",)]  # untouched
+    monkeypatch.delenv("HEARTH_DEMO")
+    with TestClient(app) as c:
+        assert "Demo mode" not in c.get("/").text and "My real fridge" in c.get("/items").text

@@ -26,6 +26,7 @@
 <a href="{{ path }}" class="{{ 'on' if sub_active == path }}"{% if sub_active == path %} aria-current="page"{% endif %}>{{ i(icon) }} {{ label }}{% if path == '/shopping' and nav_counts.shopping %} <span class="cnt">{{ nav_counts.shopping }}</span>{% endif %}{% if path == '/tasks' and nav_counts.overdue %} <span class="cnt bad">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}
 </div></nav>{% endif %}
 </header>
+{% if demo %}<div class="demo-banner" role="note">Demo mode: sample data only. Your real Hearth data isn't loaded or changed.</div>{% endif %}
 <main id="main">{% block content %}{% endblock %}</main>
 <footer class="foot">Hearth v{{ about.version }} · Developed by <a href="/settings#about">{{ about.developer }}</a></footer>
 

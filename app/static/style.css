@@ -599,3 +599,4 @@ dialog.palette{width:min(640px,94vw);margin-top:12vh;padding:0}
 @media (max-width:520px){.cootl li{grid-template-columns:56px 1fr auto}.cootl li>span:last-child{display:none}}
 .qty{display:inline-flex;align-items:center;gap:6px}
 .qty b{min-width:52px;text-align:center}
+.demo-banner{background:var(--copper-soft);color:var(--copper-text);text-align:center;font-weight:600;font-size:var(--fs-sm);padding:6px 12px;border-bottom:1px solid var(--line)}

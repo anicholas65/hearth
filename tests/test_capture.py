@@ -114,7 +114,8 @@ def test_ocr_hook_and_page(client, monkeypatch):
     from app import capture
     monkeypatch.setenv("OCR_URL", "http://ocr.local/read")
     monkeypatch.setattr(capture, "ocr_remote", lambda d, m: "TOTAL 9.99")
-    assert client.post("/capture/ocr", files={"image": ("x.jpg", b"x", "image/jpeg")}).json() == {"text": "TOTAL 9.99"}
+    assert client.post("/capture/ocr", files={"image": ("x.jpg", b"x", "image/jpeg")}).json() == {
+        "text": "TOTAL 9.99", "provider": "url"}
     assert client.post("/capture/parse", json={"mode": "receipt", "text": "TOTAL 9.99"}).json()["total"] == 9.99
     for m in ("barcode", "label", "receipt"):
         assert client.get(f"/capture?mode={m}").status_code == 200
@@ -131,3 +132,78 @@ def test_manual_attach(client, monkeypatch):
     monkeypatch.setattr(capture, "fetch_manual", lambda u: (_ for _ in ()).throw(ValueError("That link isn't a PDF")))
     r = client.post("/items/1/manual-url", data={"url": "https://example.com/page"}, follow_redirects=False)
     assert "PDF" in r.headers["location"].replace("+", " ")
+
+
+class _FakeMessages:
+    def __init__(self, payload, stop="end_turn"):
+        self.payload, self.stop, self.calls = payload, stop, []
+
+    def create(self, **kw):
+        import json
+        from types import SimpleNamespace as NS
+        self.calls.append(kw)
+        return NS(stop_reason=self.stop, content=[NS(type="text", text=json.dumps(self.payload))])
+
+
+def _fake_client(payload, stop="end_turn"):
+    from types import SimpleNamespace as NS
+    m = _FakeMessages(payload, stop)
+    return NS(beta=NS(messages=m)), m
+
+
+def _jpeg():
+    from PIL import Image
+    b = io.BytesIO(); Image.new("RGB", (3000, 2000), (250, 250, 250)).save(b, "JPEG")
+    return b.getvalue()
+
+
+def test_claude_read_receipt_request_shape_and_fields():
+    from app.capture import claude_read
+    client, m = _fake_client({"text": "HOME DEPOT ... TOTAL 916.92", "store": "The Home Depot",
+                              "date": "2026-11-02", "total": 916.92})
+    out = claude_read(_jpeg(), "receipt", client=client)
+    assert out["fields"] == {"store": "The Home Depot", "date": "2026-11-02", "total": 916.92}
+    kw = m.calls[0]
+    assert kw["model"] == "claude-opus-5-5" and kw["fallbacks"] == "default"
+    assert kw["betas"] == ["server-side-fallback-2026-07-01"]
+    assert kw["output_config"]["effort"] == "low"
+    schema = kw["output_config"]["format"]["schema"]
+    assert schema["additionalProperties"] is False and set(schema["required"]) == {"text", "store", "date", "total"}
+    img = kw["messages"][0]["content"][0]
+    assert img["type"] == "image" and img["source"]["media_type"] == "image/jpeg"
+    import base64
+    from PIL import Image
+    w, h = Image.open(io.BytesIO(base64.b64decode(img["source"]["data"]))).size
+    assert max(w, h) <= 1568  # downscaled before sending
+
+
+def test_claude_read_label_cleans_and_handles_refusal():
+    from app.capture import claude_read
+    client, _ = _fake_client({"text": "...", "brand": "Whirlpool", "model": "WDT 730PAHZ0", "serial": "",
+                              "manufactured": "2019-03"})
+    assert claude_read(_jpeg(), "label", client=client)["fields"] == {
+        "brand": "Whirlpool", "model": "WDT730PAHZ0", "manufactured": "2019-03"}
+    client, _ = _fake_client({}, stop="refusal")
+    with pytest.raises(RuntimeError, match="declined"):
+        claude_read(_jpeg(), "label", client=client)
+
+
+def test_ocr_provider_selection(client, monkeypatch):
+    from app import capture
+    for k in ("OCR_PROVIDER", "OCR_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    assert capture.ocr_provider() is None
+    monkeypatch.setenv("OCR_URL", "http://ocr.local")
+    assert capture.ocr_provider() == "url"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert capture.ocr_provider() == "claude"  # Claude preferred when a key is present
+    monkeypatch.setenv("OCR_PROVIDER", "url")
+    assert capture.ocr_provider() == "url"
+    monkeypatch.setenv("OCR_PROVIDER", "claude")
+    monkeypatch.setattr(capture, "claude_read", lambda d, m: {"text": "t", "fields": {"total": 9.99}})
+    r = client.post("/capture/ocr", data={"mode": "receipt"}, files={"image": ("x.jpg", b"x", "image/jpeg")})
+    assert r.json() == {"text": "t", "fields": {"total": 9.99}, "provider": "claude"}
+    assert "read by Claude" in client.get("/capture?mode=receipt").text
+    monkeypatch.setattr(capture, "claude_read", lambda d, m: (_ for _ in ()).throw(RuntimeError("Claude rejected the API key")))
+    bad = client.post("/capture/ocr", data={"mode": "receipt"}, files={"image": ("x.jpg", b"x", "image/jpeg")})
+    assert bad.status_code == 502 and "API key" in bad.json()["detail"]

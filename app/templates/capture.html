@@ -57,24 +57,25 @@
 <label class="chk"><input type="checkbox" name="set_purchase" value="1" checked> Use as the item's purchase price and date (if empty)</label>
 <div><button>{{ i('check') }} Save receipt</button></div></form>
 {% endif %}
-<p class="muted small" style="margin:10px 0 0">Text is read on this device{{ ' or by your server OCR' if ocr_server }}. Check the fields before saving.</p>
+<p class="muted small" style="margin:10px 0 0">{% if ocr_provider == 'claude' %}Photos are read by Claude (Anthropic API).{% elif ocr_provider == 'url' %}Photos are read by your OCR service.{% else %}Text is read on this device.{% endif %} Check the fields before saving.</p>
 </div></section></div>
 {% endif %}
 
 <script>
-// Pluggable OCR: window.HearthOCR.recognize(file, onProgress) → text. Default provider is Tesseract.js
+// Pluggable OCR: window.HearthOCR.recognize(file, onProgress, mode) → {text, fields?}. Default provider is Tesseract.js
 // (loaded on demand); if the server has OCR_URL configured, it is tried first.
 window.HearthOCR = window.HearthOCR || {
   server: {{ 'true' if ocr_server else 'false' }},
-  async recognize(file, progress) {
+  // Returns {text, fields?}: server providers may extract fields directly (Claude does).
+  async recognize(file, progress, mode) {
     if (this.server) {
-      try { const fd = new FormData(); fd.append('image', file);
-        const r = await fetch('/capture/ocr', {method: 'POST', body: fd}); if (r.ok) return (await r.json()).text; } catch {}
+      try { const fd = new FormData(); fd.append('image', file); fd.append('mode', mode || 'receipt');
+        const r = await fetch('/capture/ocr', {method: 'POST', body: fd}); if (r.ok) return await r.json(); } catch {}
     }
     if (!window.Tesseract) await new Promise((ok, bad) => { const s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; s.onload = ok; s.onerror = () => bad(new Error('OCR engine could not load (offline?)')); document.head.appendChild(s); });
     const res = await Tesseract.recognize(file, 'eng', {logger: m => m.status === 'recognizing text' && progress(m.progress)});
-    return res.data.text;
+    return {text: res.data.text};
   },
 };
 (() => {
@@ -130,11 +131,13 @@ window.HearthOCR = window.HearthOCR || {
       const file = e.target.files[0]; if (!file) return;
       const dt = new DataTransfer(); dt.items.add(file); $('photo-field').files = dt.files;
       const p = $('preview'); p.src = URL.createObjectURL(file); p.hidden = false;
-      $('ocrprog').hidden = false; $('ocrstatus').textContent = 'Reading text…';
+      $('ocrprog').hidden = false; $('ocrstatus').textContent = HearthOCR.server ? 'Reading…' : 'Reading text…';
       try {
-        const text = await HearthOCR.recognize(file, k => $('ocrbar').style.width = Math.round(k * 100) + '%');
+        const read = await HearthOCR.recognize(file, k => $('ocrbar').style.width = Math.round(k * 100) + '%', mode);
+        const text = read.text || '';
         $('raw').textContent = text; $('rawwrap').hidden = false;
-        const f = await fetch('/capture/parse', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode, text})}).then(r => r.json());
+        const f = read.fields && Object.keys(read.fields).length ? read.fields
+          : await fetch('/capture/parse', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode, text})}).then(r => r.json());
         const set = (id, v) => { if (v != null && $(id) && !$(id).value) $(id).value = v; };
         set('p-brand', f.brand); set('p-model', f.model); set('p-serial', f.serial);
         set('p-total', f.total); set('p-date', f.date); set('p-store', f.store);

@@ -16,6 +16,9 @@ def apprise_urls() -> list[str]:
 
 
 def send(title: str, body: str) -> bool:
+    from .db import demo_mode
+    if demo_mode():
+        return False
     urls = apprise_urls()
     if not urls:
         return False

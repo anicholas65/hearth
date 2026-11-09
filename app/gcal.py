@@ -40,7 +40,8 @@ def task_remind_minutes() -> int:
 
 
 def enabled() -> bool:
-    return get_setting("gcal_enabled", "1") == "1"
+    from .db import demo_mode
+    return get_setting("gcal_enabled", "1") == "1" and not demo_mode()
 
 
 def configured() -> bool:

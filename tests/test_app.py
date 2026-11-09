@@ -131,7 +131,7 @@ def test_theme_cookie(client):
     client.cookies.set("theme", "ocean"); client.cookies.set("mode", "dark")
     html = client.get("/").text
     assert 'data-theme="ocean"' in html and 'data-mode="dark"' in html
-    client.cookies.set("theme", "bogus")
+    client.cookies.clear(); client.cookies.set("theme", "bogus")
     assert 'data-theme="hearth"' in client.get("/").text  # default theme
 
 
