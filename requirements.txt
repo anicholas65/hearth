@@ -6,3 +6,4 @@ apprise==2.2.0
 pillow==13.0.0
 google-auth==2.62.1
 requests==2.34.2
+segno==1.6.6

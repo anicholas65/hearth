@@ -1,0 +1,14 @@
+# Plain deployment (LAN only). On Unraid the template in unraid/hearth.xml does the same thing.
+services:
+  hearth:
+    image: ghcr.io/anicholas65/hearth:latest
+    container_name: hearth
+    ports:
+      - "8080:8080"
+    volumes:
+      - /mnt/user/appdata/hearth:/data
+    environment:
+      TZ: ${TZ:-America/New_York}
+      APPRISE_URLS: ${APPRISE_URLS:-}
+      # HEARTH_USERNAME / HEARTH_PASSWORD enable basic auth on the LAN port
+    restart: unless-stopped

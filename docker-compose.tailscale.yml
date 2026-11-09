@@ -1,0 +1,39 @@
+# Tailscale sidecar variant (use when Unraid's per-container "Use Tailscale" toggle isn't available).
+# Hearth shares the sidecar's network namespace, so Tailscale Serve reaches it on 127.0.0.1:8080 and
+# the identity headers it adds are trusted. LAN access stays on 192.168.1.64:8080.
+#   TS_AUTHKEY=tskey-auth-... docker compose -f docker-compose.tailscale.yml up -d
+# Never enable Funnel for Hearth (serve.json sets AllowFunnel=false).
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: hearth-tailscale
+    hostname: hearth
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY (tailscale admin > Settings > Keys)}
+      TS_HOSTNAME: hearth
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - /mnt/user/appdata/hearth-tailscale:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8080:8080"          # LAN access, published through the shared namespace
+    restart: unless-stopped
+
+  hearth:
+    image: ghcr.io/anicholas65/hearth:latest
+    container_name: hearth
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    volumes:
+      - /mnt/user/appdata/hearth:/data
+    environment:
+      TZ: ${TZ:-America/New_York}
+      APPRISE_URLS: ${APPRISE_URLS:-}
+      HEARTH_PUBLIC_URL: ${HEARTH_PUBLIC_URL:-}   # e.g. https://hearth.your-tailnet.ts.net
+    restart: unless-stopped

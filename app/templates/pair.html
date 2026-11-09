@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% from "_macros.html" import i %}
+{% block title %}Pair a device{% endblock %}{% block content %}
+<a class="crumb" href="/settings#remote">{{ i('back') }} Settings</a>
+<section class="card" style="max-width:560px;margin:0 auto"><div class="card-b" style="padding-top:22px;text-align:center">
+<h1 style="font-size:22px">Pair a device</h1>
+<p class="muted">In the Hearth app, choose <b>Pair with server</b> and scan this code. It works once and expires in 10 minutes.</p>
+<div style="display:inline-block;background:#fff;padding:10px;border-radius:14px;border:1px solid var(--line)" role="img" aria-label="Pairing QR code">{{ qr|safe }}</div>
+<p style="margin:14px 0 4px">Or enter code <b style="font:700 22px ui-monospace,monospace;letter-spacing:.12em">{{ code[:4] }}-{{ code[4:] }}</b></p>
+<p class="muted small" id="exp" data-exp="{{ expires }}">Expires {{ expires[11:16] }} UTC</p>
+<details class="more" style="text-align:left"><summary>QR contents</summary><code style="display:block;white-space:pre-wrap;word-break:break-all">{{ payload }}</code></details>
+<div class="actions" style="justify-content:center;margin-top:12px"><a class="btn ghost" href="/settings#remote">Done</a></div>
+</div></section>
+<script>
+(() => { const el = document.getElementById('exp'), end = Date.parse(el.dataset.exp);
+  const tick = () => { const s = Math.max(0, Math.round((end - Date.now()) / 1000));
+    el.textContent = s ? `Expires in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : 'Expired: generate a new code';
+    if (s) setTimeout(tick, 1000); }; tick(); })();
+</script>
+{% endblock %}

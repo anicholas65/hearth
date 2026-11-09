@@ -109,6 +109,8 @@ app = FastAPI(title="Hearth", lifespan=lifespan)
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
     user, pw = os.environ.get("HEARTH_USERNAME"), os.environ.get("HEARTH_PASSWORD")
+    if request.scope.get("hearth_member"):  # signed in via Tailscale identity (trusted loopback proxy)
+        return await call_next(request)
     if not (user and pw) or request.url.path.startswith("/api/"):  # /api/v1 uses device tokens
         return await call_next(request)
     try:
@@ -121,6 +123,9 @@ async def basic_auth(request: Request, call_next):
         return await call_next(request)
     return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Hearth"'})
 
+
+from .tailnet import TailscaleIdentityMiddleware  # noqa: E402
+app.add_middleware(TailscaleIdentityMiddleware)  # outermost: runs before basic auth
 
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
@@ -209,6 +214,7 @@ def render(request: Request, name: str, **ctx):
     ctx["brand"] = {"v2": v2, "icon": "/static/brand/hearth-icon.svg" if v2 else "/static/icon.png",
                     "favicon": "/static/favicon.svg" if v2 else "/static/icon.png"}
     ctx["msg"] = request.query_params.get("msg")
+    ctx["member"] = request.scope.get("hearth_member")
     ctx["section"] = section_for(request.url.path)
     path, q = request.url.path, request.url.query
     full = path + (f"?{q}" if q else "")
@@ -1325,6 +1331,40 @@ def budget_entry_delete(entry_id: int):
     return back(toast_url(f"/budget?year={r[0][:4]}" if r else "/budget", "Entry deleted"))
 
 
+def server_url(request: Request) -> str:
+    """URL a paired device should use: Settings > public URL, else the tailnet HTTPS name, else this page."""
+    from . import tailnet
+    return (get_setting("public_url") or os.environ.get("HEARTH_PUBLIC_URL") or tailnet.status().get("url")
+            or str(request.base_url).rstrip("/"))
+
+
+@app.post("/settings/pair")
+def settings_pair(request: Request):
+    import json as _json
+
+    import segno
+    from .api import create_pair_code
+    code, exp = create_pair_code()
+    payload = _json.dumps({"server": server_url(request), "pairCode": code}, separators=(",", ":"))
+    qr = segno.make(payload, error="m").svg_inline(scale=6, dark="#1E2421", light="#FFFFFF", border=2)
+    return render(request, "pair.html", code=code, expires=exp, payload=payload, qr=qr)
+
+
+@app.post("/settings/devices/{device_id}/revoke")
+def settings_revoke(device_id: str):
+    from .api import revoke_device
+    revoke_device(device_id)
+    return back(toast_url("/settings#remote", "Device revoked"))
+
+
+@app.post("/settings/remote")
+def settings_remote(public_url: str = Form(None), ntfy_server: str = Form(None), ntfy_topic: str = Form(None)):
+    set_setting("public_url", blank(public_url))
+    set_setting("ntfy_server", blank(ntfy_server))
+    set_setting("ntfy_topic", blank(ntfy_topic))
+    return back(toast_url("/settings#remote", "Saved"))
+
+
 @app.post("/settings/brand")
 def settings_brand(use: str = Form("0")):
     set_setting("brand_v2", "1" if use == "1" else "0")
@@ -1353,7 +1393,20 @@ def settings_page(request: Request, sent: str | None = None, g: str | None = Non
     return render(request, "settings.html", targets=len(notify.apprise_urls()), sent=sent,
                   lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()),
                   google=google, g=g, gmsg=gmsg, imp=imp, imsg=imsg,
-                  expense_categories=finance.expense_categories())
+                  expense_categories=finance.expense_categories(), remote=_remote_ctx(request))
+
+
+def _remote_ctx(request: Request) -> dict:
+    from . import tailnet
+    from .api import list_devices, notify_config
+    with get_db() as db:
+        members = [dict(r) for r in db.execute("SELECT * FROM members ORDER BY created_at")]
+    peer = request.client.host if request.client else None
+    secure = request.url.scheme == "https" or (tailnet.is_loopback(peer) and
+                                               request.headers.get("x-forwarded-proto") == "https")
+    return dict(ts=tailnet.status(), devices=list_devices(), members=members, server=server_url(request),
+                https=secure, via_tailnet=bool(request.scope.get("hearth_member")),
+                public_url=get_setting("public_url") or "", notify=notify_config())
 
 
 @app.post("/settings/test")

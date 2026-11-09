@@ -51,6 +51,31 @@
 {% if sent == 'ok' %}<p class="ok">Test sent.</p>{% elif sent == 'fail' %}<p class="bad">Test failed. Check container logs.</p>{% endif %}
 <form method="post" action="/settings/test"><button {{ 'disabled' if not targets }}>{{ i('bell') }} Send test notification</button></form></div></section>
 <section class="card">{{ head('Data', 'db') }}<div class="card-b"><p style="margin-top:0">Database, photos and uploads live in <code>{{ data }}</code>.</p><p class="muted" style="margin-bottom:0">Back up that folder (on Unraid: <code>/mnt/user/appdata/hearth</code>).</p></div></section></div>
+<section class="card" id="remote">{{ head('Remote access & devices', 'link', ('<span class="badge ok">' ~ i('check') ~ ' HTTPS</span>' if remote.https else '<span class="badge">HTTP (LAN)</span>')) }}<div class="card-b">
+<div class="facts" style="margin-bottom:14px">
+<div><span>Tailscale</span>{% if remote.ts.available and remote.ts.backend == 'Running' %}<b class="ok" style="font-size:16px">Connected</b><small>{{ remote.ts.tailnet or '' }}</small>{% elif remote.ts.available %}<b style="font-size:16px">{{ remote.ts.backend or 'Installed' }}</b><small>{{ remote.ts.error or 'not logged in' }}</small>{% else %}<b style="font-size:16px">Not detected</b><small>see docs/TAILSCALE.md</small>{% endif %}</div>
+<div><span>Address for devices</span><b style="font-size:14px;overflow-wrap:anywhere">{{ remote.server }}</b><small>{{ 'MagicDNS name' if remote.ts.dns_name and remote.server.startswith('https://' ~ remote.ts.dns_name) else 'set below if different' }}</small></div>
+<div><span>This session</span><b style="font-size:16px">{{ 'Tailnet' if remote.via_tailnet else 'LAN' }}</b><small>{% if member %}signed in as {{ member.name }}{% else %}{{ 'HTTPS' if remote.https else 'camera/PWA need HTTPS' }}{% endif %}</small></div>
+</div>
+<div class="split" style="gap:18px">
+<div>
+<h2 style="margin-bottom:8px">{{ i('phone') }} Paired devices</h2>
+{% if remote.devices %}<div class="list">{% for d in remote.devices %}<div class="row"><div class="dot {{ 'acc' if not d.revoked_at }}">{{ i('phone') }}</div>
+<div class="grow"><b>{{ d.name }}</b><small>paired {{ d.created_at[:10]|nicedate }}{% if d.last_seen_at %} · last seen {{ d.last_seen_at[:10]|nicedate }}{% endif %}{% if d.revoked_at %} · <span class="bad">revoked</span>{% endif %}</small></div>
+{% if not d.revoked_at %}<form method="post" action="/settings/devices/{{ d.id }}/revoke" onsubmit="return confirm('Revoke {{ d.name }}? It will need to pair again.')"><button class="danger sm">Revoke</button></form>{% endif %}</div>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0 0 10px">No devices yet.</p>{% endif %}
+<form method="post" action="/settings/pair" style="margin-top:10px"><button>{{ i('plus') }} Pair a device</button></form>
+{% if remote.members %}<h2 style="margin:18px 0 8px">{{ i('users') }} Household (Tailscale sign-in)</h2><div class="chips">{% for m in remote.members %}<span class="chip">{{ m.name }} <span class="muted small">{{ m.login }}{{ ' · owner' if m.role == 'owner' }}</span></span>{% endfor %}</div>{% endif %}
+</div>
+<form method="post" action="/settings/remote" class="stack">
+<h2>{{ i('sliders') }} Addresses &amp; push</h2>
+<label>Server URL for devices <span class="hint">usually https://hearth.&lt;tailnet&gt;.ts.net (auto-detected when Tailscale runs in the container)</span><input name="public_url" value="{{ remote.public_url }}" placeholder="https://hearth.example.ts.net"></label>
+<label>ntfy server <span class="hint">push for phones; from APPRISE_URLS if blank</span><input name="ntfy_server" value="{{ remote.notify.ntfyServer or '' }}" placeholder="https://ntfy.sh"></label>
+<label>ntfy topic <span class="hint">long and unguessable</span><input name="ntfy_topic" value="{{ remote.notify.ntfyTopic or '' }}" placeholder="hearth-7f3k9q"></label>
+<div><button class="ghost">Save</button></div>
+<p class="muted small" style="margin:0">Don't enable Tailscale <b>Funnel</b> for Hearth: it would put your home data on the public internet.</p>
+</form></div>
+</div></section>
 <section class="card" id="brand">{{ head('Hearth logo', 'star', ('<span class="badge ok">In use</span>' if brand.v2 else '<span class="badge">Preview</span>')) }}<div class="card-b">
 <p class="muted" style="margin:0 0 12px">A refreshed identity: a simple house holding a warm hearth flame. You can switch back to the original icon at any time.</p>
 <div class="brandgrid">
