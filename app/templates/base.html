@@ -38,8 +38,9 @@
 <dialog class="sheet" id="quick" aria-labelledby="quick-h">
 <div class="dlg-h"><h2 id="quick-h">Add to Hearth</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
 <div class="qgrid">
+<a class="primary" href="/capture">{{ i('camera') }}<span>Capture<small>Barcode · label · receipt</small></span></a>
 <form method="post" action="/photos" enctype="multipart/form-data" style="display:contents"><input type="hidden" name="next" value="photo">
-<label class="primary">{{ i('camera') }}<span>Capture a photo<small>Item, receipt, damage — sort it after</small></span><input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" class="sr-only"></label></form>
+<label>{{ i('image') }}Just a photo<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" class="sr-only"></label></form>
 <a href="/tasks#new-task">{{ i('wrench') }}Task</a>
 <a href="/schedule#new">{{ i('calendar') }}Appointment</a>
 <a href="/schedule?kind=reminder#new">{{ i('bell') }}Reminder</a>
@@ -48,7 +49,7 @@
 <a href="/documents#new">{{ i('receipt') }}Document</a>
 <a href="/contractors#new">{{ i('users') }}Contractor</a>
 <a href="/budget#new-expense">{{ i('wallet') }}Expense</a>
-<a href="/budget#new-funds">{{ i('banknote') }}Add funds</a>
+
 </div></dialog>
 
 <dialog class="sheet palette" id="palette" aria-label="Command palette">

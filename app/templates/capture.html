@@ -1,0 +1,149 @@
+{% extends "base.html" %}{% from "_macros.html" import i, head %}
+{% block title %}Capture{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Capture</h1><p>Point, shoot, done. Hearth fills in the details.</p></div>
+<div class="tabs" role="tablist">{% for k, lbl, ic in [('barcode','Barcode','tag'),('label','Label','box'),('receipt','Receipt','receipt')] %}
+<a href="/capture?mode={{ k }}" class="{{ 'on' if mode == k }}" role="tab" aria-selected="{{ 'true' if mode == k else 'false' }}">{{ i(ic) }} {{ lbl }}</a>{% endfor %}</div></div>
+
+{% if mode == 'barcode' %}
+<div class="split">
+<section class="card">{{ head('Scan a barcode', 'tag') }}<div class="card-b stack">
+<div class="scanbox" id="scanbox" hidden><video id="cam" playsinline muted></video><div class="scanline"></div></div>
+<div class="actions">
+<button type="button" id="live" class="hide-insecure">{{ i('camera') }} Scan with camera</button>
+<label class="btn ghost">{{ i('image') }} From a photo<input type="file" accept="image/*" capture="environment" id="bcfile" class="sr-only"></label></div>
+<p class="muted small insecure-note" hidden>Live scanning needs HTTPS (use your Tailscale address). Taking a photo works everywhere.</p>
+<form class="actions" id="manual" onsubmit="return false"><label class="sr-only" for="code">Barcode number</label>
+<input id="code" inputmode="numeric" placeholder="or type the number under the barcode" value="{{ code }}" style="max-width:300px"><button class="ghost sm">Look up</button></form>
+<p class="muted small" id="bcstatus" role="status"></p>
+</div></section>
+<section class="card" id="result" hidden>{{ head('Found', 'check') }}<div class="card-b">
+<div class="row" style="border:0"><img id="r-img" class="thumb" alt="" hidden><div class="grow"><b id="r-name"></b><small id="r-meta"></small></div></div>
+<p class="badge" id="r-have" hidden></p>
+<form method="post" action="/capture/barcode" class="stack" style="margin-top:8px">
+<input type="hidden" name="code" id="f-code"><input type="hidden" name="brand" id="f-brand"><input type="hidden" name="category" id="f-cat">
+<label>Name<input name="name" id="f-name" required></label>
+<div class="seg" role="radiogroup" aria-label="Add to"><label><input type="radio" name="target" value="shopping" checked>{{ i('cart') }} Shopping</label>
+<label><input type="radio" name="target" value="pantry">{{ i('box') }} Pantry</label><label><input type="radio" name="target" value="item">{{ i('tag') }} Inventory</label></div>
+<label>List<select name="list"><option value="groceries">Groceries</option><option value="supplies">Supplies</option></select></label>
+<div><button>{{ i('plus') }} Add</button></div></form></div></section>
+</div>
+
+{% else %}
+<div class="split">
+<section class="card">{{ head('Photograph the ' ~ ('rating label' if mode == 'label' else 'receipt'), 'camera') }}<div class="card-b stack">
+<p class="muted" style="margin:0">{{ 'The sticker inside the door or on the back with MODEL and SERIAL.' if mode == 'label' else 'Flat, well lit, the whole receipt in frame.' }}</p>
+<label class="btn" style="align-self:flex-start">{{ i('camera') }} Take photo<input type="file" accept="image/*" capture="environment" id="ocrfile" class="sr-only"></label>
+<img id="preview" alt="Captured photo" hidden style="max-width:100%;border-radius:12px;border:1px solid var(--line)">
+<div id="ocrprog" hidden><div class="progress" role="progressbar" aria-label="Reading text"><i id="ocrbar" style="width:0%"></i></div><p class="muted small" id="ocrstatus" role="status">Reading text…</p></div>
+<details class="more" id="rawwrap" hidden><summary class="small">Text Hearth read</summary><pre id="raw" style="white-space:pre-wrap;font-size:12px;max-height:220px;overflow:auto"></pre></details>
+</div></section>
+<section class="card">{{ head('Details', 'pencil') }}<div class="card-b">
+{% if mode == 'label' %}
+<form method="post" action="/capture/label" enctype="multipart/form-data" class="stack" id="saveform">
+<input type="file" name="photo" id="photo-field" hidden>
+<label>For item<select name="item_id" onchange="document.getElementById('newitem').hidden = !!this.value"><option value="">New item…</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}{{ ' · ' ~ it.model if it.model }}</option>{% endfor %}</select></label>
+<div id="newitem" class="form"><label>Name<input name="name" placeholder="Dishwasher"></label>
+<label>Room<select name="room_id"><option value="">—</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></label></div>
+<div class="form"><label>Brand<input name="brand" id="p-brand"></label><label>Model<input name="model" id="p-model"></label><label>Serial<input name="serial" id="p-serial"></label></div>
+<div><button>{{ i('check') }} Save to item</button></div></form>
+{% else %}
+<form method="post" action="/capture/receipt" enctype="multipart/form-data" class="stack" id="saveform">
+<input type="file" name="photo" id="photo-field" hidden>
+<div class="form"><label>Total<input name="total" id="p-total" type="number" step="0.01" min="0" inputmode="decimal"></label>
+<label>Date<input name="date" id="p-date" type="date"></label></div>
+<label>Store<input name="store" id="p-store"></label>
+<label>Category<select name="category"><option value="">Uncategorized</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></label>
+<label>For item <span class="hint">optional</span><select name="item_id"><option value="">None</option>{% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</select></label>
+<label class="chk"><input type="checkbox" name="set_purchase" value="1" checked> Use as the item's purchase price and date (if empty)</label>
+<div><button>{{ i('check') }} Save receipt</button></div></form>
+{% endif %}
+<p class="muted small" style="margin:10px 0 0">Text is read on this device{{ ' or by your server OCR' if ocr_server }}. Check the fields before saving.</p>
+</div></section></div>
+{% endif %}
+
+<script>
+// Pluggable OCR: window.HearthOCR.recognize(file, onProgress) → text. Default provider is Tesseract.js
+// (loaded on demand); if the server has OCR_URL configured, it is tried first.
+window.HearthOCR = window.HearthOCR || {
+  server: {{ 'true' if ocr_server else 'false' }},
+  async recognize(file, progress) {
+    if (this.server) {
+      try { const fd = new FormData(); fd.append('image', file);
+        const r = await fetch('/capture/ocr', {method: 'POST', body: fd}); if (r.ok) return (await r.json()).text; } catch {}
+    }
+    if (!window.Tesseract) await new Promise((ok, bad) => { const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; s.onload = ok; s.onerror = () => bad(new Error('OCR engine could not load (offline?)')); document.head.appendChild(s); });
+    const res = await Tesseract.recognize(file, 'eng', {logger: m => m.status === 'recognizing text' && progress(m.progress)});
+    return res.data.text;
+  },
+};
+(() => {
+  const $ = id => document.getElementById(id);
+  const mode = '{{ mode }}';
+  if (mode === 'barcode') {
+    const status = $('bcstatus');
+    if (!window.isSecureContext || !navigator.mediaDevices) { document.querySelectorAll('.hide-insecure').forEach(e => e.hidden = true); document.querySelector('.insecure-note').hidden = false; }
+    const zxing = () => window.ZXingBrowser ? Promise.resolve() : new Promise((ok, bad) => { const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'; s.onload = ok; s.onerror = () => bad(new Error('Scanner could not load')); document.head.appendChild(s); });
+    const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];
+    const native = 'BarcodeDetector' in window ? new BarcodeDetector({formats}) : null;
+    const show = async code => {
+      status.textContent = 'Looking up ' + code + '…'; stop();
+      const r = await fetch('/capture/lookup?code=' + encodeURIComponent(code)).then(r => r.json());
+      $('result').hidden = false; $('f-code').value = r.code;
+      $('f-name').value = r.found ? [r.brand, r.name].filter(Boolean).join(' ').trim() : '';
+      $('f-brand').value = r.brand || ''; $('f-cat').value = r.category || '';
+      $('r-name').textContent = r.found ? r.name : 'Not in the product databases';
+      $('r-meta').textContent = r.found ? [r.brand, r.quantity, r.source].filter(Boolean).join(' · ') : 'Code ' + r.code + ' · type a name below';
+      const img = $('r-img'); if (r.image) { img.src = r.image; img.hidden = false; } else img.hidden = true;
+      const have = $('r-have'); have.hidden = !(r.item || r.pantry);
+      if (r.item) have.textContent = 'Already in inventory: ' + r.item.name; else if (r.pantry) have.textContent = 'In pantry (' + (r.pantry.qty ?? 0) + ')';
+      document.querySelector(`input[name=target][value=${r.kind === 'goods' ? 'item' : 'shopping'}]`).checked = true;
+      status.textContent = ''; $('f-name').focus();
+    };
+    let stream = null, raf = null, controls = null;
+    const stop = () => { if (raf) cancelAnimationFrame(raf); controls?.stop(); stream?.getTracks().forEach(t => t.stop()); stream = null; $('scanbox').hidden = true; };
+    $('live')?.addEventListener('click', async () => {
+      $('scanbox').hidden = false; const v = $('cam');
+      try {
+        if (native) {
+          stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}}); v.srcObject = stream; await v.play();
+          const tick = async () => { try { const c = await native.detect(v); if (c[0]) return show(c[0].rawValue); } catch {} raf = requestAnimationFrame(tick); }; tick();
+        } else {
+          await zxing(); const reader = new ZXingBrowser.BrowserMultiFormatReader();
+          controls = await reader.decodeFromVideoDevice(undefined, v, res => { if (res) show(res.getText()); });
+        }
+      } catch (e) { status.textContent = 'Camera unavailable: ' + e.message; stop(); }
+    });
+    $('bcfile').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return; status.textContent = 'Reading barcode…';
+      try {
+        if (native) { const c = await native.detect(await createImageBitmap(file)); if (c[0]) return show(c[0].rawValue); }
+        await zxing(); const url = URL.createObjectURL(file);
+        const res = await new ZXingBrowser.BrowserMultiFormatReader().decodeFromImageUrl(url); return show(res.getText());
+      } catch { status.textContent = 'No barcode found in that photo. Try closer, or type the number.'; }
+    });
+    $('manual').addEventListener('submit', () => { const c = $('code').value.trim(); if (c) show(c); });
+    if ($('code').value) show($('code').value);
+  } else {
+    $('ocrfile').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const dt = new DataTransfer(); dt.items.add(file); $('photo-field').files = dt.files;
+      const p = $('preview'); p.src = URL.createObjectURL(file); p.hidden = false;
+      $('ocrprog').hidden = false; $('ocrstatus').textContent = 'Reading text…';
+      try {
+        const text = await HearthOCR.recognize(file, k => $('ocrbar').style.width = Math.round(k * 100) + '%');
+        $('raw').textContent = text; $('rawwrap').hidden = false;
+        const f = await fetch('/capture/parse', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode, text})}).then(r => r.json());
+        const set = (id, v) => { if (v != null && $(id) && !$(id).value) $(id).value = v; };
+        set('p-brand', f.brand); set('p-model', f.model); set('p-serial', f.serial);
+        set('p-total', f.total); set('p-date', f.date); set('p-store', f.store);
+        const found = Object.keys(f).length;
+        $('ocrstatus').textContent = found ? `Filled ${found} field${found > 1 ? 's' : ''}. Check them, then save.` : 'Couldn’t pick out the details. Type them in; the photo is still saved.';
+      } catch (err) { $('ocrstatus').textContent = err.message + '. You can still type the details.'; }
+      $('ocrbar').style.width = '100%';
+    });
+  }
+})();
+</script>
+{% endblock %}

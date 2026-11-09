@@ -17,8 +17,7 @@
 <a href="/tasks#new-task">{{ i('wrench') }} Add task</a>
 <a href="/items#new-item">{{ i('box') }} Add item</a>
 <a href="/budget#new-expense">{{ i('wallet') }} Record expense</a>
-<form method="post" action="/photos" enctype="multipart/form-data" style="display:contents"><input type="hidden" name="next" value="photo">
-<label>{{ i('camera') }} Capture photo<input type="file" name="files" accept="image/*" capture="environment" onchange="this.form.submit()" class="sr-only"></label></form>
+<a href="/capture">{{ i('camera') }} Capture</a>
 </div>
 
 <div class="home-grid">

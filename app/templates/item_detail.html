@@ -54,6 +54,10 @@
 <section class="card" id="docs">{{ head('Receipts & documents', 'receipt') }}<div class="card-b">
 {% if docs %}<div class="list" style="margin-bottom:12px">{% for d in docs %}<div class="row"><div class="dot">{{ i('file') }}</div>
 <div class="grow"><a href="/documents/{{ d.id }}/file" target="_blank">{{ d.title }}</a><small>{{ d.uploaded_at[:10]|nicedate }}</small></div></div>{% endfor %}</div>{% endif %}
+{% if manual_links %}<details class="more" style="margin-bottom:10px"><summary>{{ i('search') }} Find the manual for {{ item.brand or '' }} {{ item.model or '' }}</summary>
+<div class="chips" style="margin-bottom:10px">{% for l in manual_links %}<a class="chip" href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label }}</a>{% endfor %}</div>
+<form class="form" method="post" action="/items/{{ item.id }}/manual-url"><label>Paste the PDF link<input name="url" type="url" required placeholder="https://…/manual.pdf"></label><button class="ghost">{{ i('download') }} Attach</button></form></details>
+{% else %}<p class="muted small" style="margin:0 0 10px">Add a brand and model (or <a href="/capture?mode=label">scan the label</a>) to look up the manual.</p>{% endif %}
 <form class="form" method="post" action="/documents" enctype="multipart/form-data"><input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="next" value="/items/{{ item.id }}">
 <label>File<input type="file" name="file" required></label><label>Title<input name="title" placeholder="Receipt, manual, warranty"></label><button class="ghost">{{ i('upload') }} Upload</button></form>
 </div></section>

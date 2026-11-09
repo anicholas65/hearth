@@ -587,3 +587,6 @@ dialog.palette{width:min(640px,94vw);margin-top:12vh;padding:0}
 .ring text{transform:rotate(90deg);transform-origin:22px 22px;font:700 10px var(--font);fill:var(--fg)}
 .hsearch input[readonly]{cursor:pointer}
 @media (prefers-reduced-motion:reduce){@view-transition{navigation:none}.skel::after{display:none}}
+.scanbox{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanline{position:absolute;left:10%;right:10%;top:50%;height:2px;background:var(--accent-2);box-shadow:0 0 12px var(--accent-2)}

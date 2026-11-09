@@ -3,7 +3,6 @@ import base64
 import os
 import secrets
 import shutil
-import io
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -14,9 +13,8 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import DEVELOPER, REPO_URL, __version__, backup, finance, gcal, home, notify, plan, shopping
+from . import DEVELOPER, REPO_URL, __version__, backup, finance, gcal, home, media, notify, plan, shopping
 from . import search as search_mod
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
@@ -283,6 +281,138 @@ async def palette_run(request: Request):
     from . import palette
     body = await request.json() if "json" in request.headers.get("content-type", "") else dict(await request.form())
     return palette.run(str(body.get("text", "")))
+
+
+# ---------- capture ----------
+
+@app.get("/capture")
+def capture_page(request: Request, mode: str = "barcode", code: str = ""):
+    from . import capture
+    with get_db() as db:
+        items = db.execute("SELECT id, name, brand, model FROM items ORDER BY name").fetchall()
+        rooms = db.execute("SELECT id, name FROM rooms ORDER BY name").fetchall()
+    return render(request, "capture.html", mode=mode if mode in ("barcode", "label", "receipt") else "barcode",
+                  items=items, rooms=rooms, categories=finance.expense_categories(), code=code,
+                  ocr_server=capture.ocr_available())
+
+
+@app.get("/capture/lookup")
+def capture_lookup(code: str):
+    from . import capture
+    hit = capture.lookup(code)
+    with get_db() as db:  # do we already own / stock it?
+        own = db.execute("SELECT id, name FROM items WHERE barcode=?", (hit["code"],)).fetchone()
+        pan = db.execute("SELECT id, name, qty FROM pantry_items WHERE barcode=?", (hit["code"],)).fetchone()
+    hit["item"] = dict(own) if own else None
+    hit["pantry"] = dict(pan) if pan else None
+    return hit
+
+
+@app.post("/capture/parse")
+async def capture_parse(request: Request):
+    from . import capture
+    body = await request.json()
+    text = str(body.get("text", ""))[:20000]
+    return capture.parse_label(text) if body.get("mode") == "label" else capture.parse_receipt(text)
+
+
+@app.post("/capture/ocr")
+async def capture_ocr(image: UploadFile = File(...)):
+    from . import capture
+    if not capture.ocr_available():
+        raise HTTPException(501, "Server OCR not configured (set OCR_URL); the browser reads the text instead")
+    return {"text": capture.ocr_remote(await image.read(), image.content_type or "image/jpeg")}
+
+
+@app.post("/capture/barcode")
+async def capture_save_barcode(request: Request):
+    f = await request.form()
+    code, name, target = blank(f.get("code")), blank(f.get("name")), f.get("target")
+    if not name:
+        raise HTTPException(400, "Give it a name")
+    if target == "pantry":
+        with get_db() as db:
+            row = db.execute("SELECT id FROM pantry_items WHERE barcode=? OR lower(name)=lower(?)", (code, name)).fetchone()
+            if row:
+                db.execute("UPDATE pantry_items SET qty=COALESCE(qty,0)+1 WHERE id=?", (row[0],))
+            else:
+                db.execute("INSERT INTO pantry_items (name, qty, barcode, category) VALUES (?,?,?,?)",
+                           (name, 1, code, blank(f.get("category"))))
+        return back(toast_url("/pantry", f"Added {name} to the pantry"))
+    if target == "item":
+        with get_db() as db:
+            iid = db.execute("INSERT INTO items (name, brand, barcode, category) VALUES (?,?,?,?)",
+                             (name, blank(f.get("brand")), code, blank(f.get("category")))).lastrowid
+        return back(toast_url(f"/items/{iid}#edit", f"Added {name} to inventory"))
+    lk = list_key(f.get("list"))
+    shopping_add_text(lk, name, barcode=code)
+    return back(toast_url(f"/shopping?list={lk}", f"Added {name} to {shopping.LISTS.get(lk, 'the list')}"))
+
+
+@app.post("/capture/label")
+async def capture_save_label(request: Request):
+    f = await request.form()
+    fields = {k: blank(f.get(k)) for k in ("brand", "model", "serial")}
+    with get_db() as db:
+        iid = num(f.get("item_id"), int)
+        if iid:
+            sets = {k: v for k, v in fields.items() if v}
+            if sets:
+                db.execute(f"UPDATE items SET {', '.join(k + '=?' for k in sets)} WHERE id=?", [*sets.values(), iid])
+        else:
+            name = blank(f.get("name")) or " ".join(x for x in (fields["brand"], fields["model"]) if x) or "New item"
+            iid = db.execute("INSERT INTO items (name, brand, model, serial, room_id) VALUES (?,?,?,?,?)",
+                             (name, fields["brand"], fields["model"], fields["serial"], num(f.get("room_id"), int))).lastrowid
+        photo = f.get("photo")
+        if photo is not None and getattr(photo, "filename", ""):
+            a, b = save_image(await photo.read())
+            db.execute("INSERT INTO photos (item_id, stored_name, thumb_name, caption, created_at) VALUES (?,?,?,?,?)",
+                       (iid, a, b, "Rating label", datetime.now().isoformat(timespec="seconds")))
+    return back(toast_url(f"/items/{iid}", "Label details saved"))
+
+
+@app.post("/capture/receipt")
+async def capture_save_receipt(request: Request):
+    f = await request.form()
+    try:
+        amount = float(f.get("total") or 0)
+    except ValueError:
+        amount = 0
+    d = blank(f.get("date")) or date.today().isoformat()
+    store = blank(f.get("store"))
+    iid = num(f.get("item_id"), int)
+    doc = None
+    photo = f.get("photo")
+    if photo is not None and getattr(photo, "filename", ""):
+        doc = await _save_receipt(photo, f"Receipt: {store or 'purchase'} ({d})", iid)
+    with get_db() as db:
+        if amount > 0:
+            db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, item_id, category, document_id) "
+                       "VALUES (?,?,?,?,?,?,?)", (d, "expense", amount, store or "Receipt", iid,
+                                                  blank(f.get("category")), doc))
+        if iid and f.get("set_purchase"):
+            db.execute("UPDATE items SET price=COALESCE(price, ?), purchase_date=COALESCE(purchase_date, ?) WHERE id=?",
+                       (amount or None, d, iid))
+    msg = f"Receipt saved{f' · ${amount:,.2f} expense' if amount else ''}"
+    return back(toast_url(f"/items/{iid}" if iid else f"/budget?year={d[:4]}", msg))
+
+
+@app.post("/items/{item_id}/manual-url")
+def item_manual_url(item_id: int, url: str = Form(...)):
+    from . import capture
+    try:
+        data, name = capture.fetch_manual(url.strip())
+    except (ValueError, Exception) as e:  # network errors included
+        return back(toast_url(f"/items/{item_id}#docs", f"Couldn't attach: {e}"))
+    stored = f"{uuid.uuid4().hex}.pdf"
+    (data_dir() / "uploads" / stored).write_bytes(data)
+    with get_db() as db:
+        it = db.execute("SELECT name, brand, model FROM items WHERE id=?", (item_id,)).fetchone()
+        title = "Manual: " + " ".join(x for x in (it["brand"], it["model"]) if x) if it and (it["brand"] or it["model"]) \
+            else f"Manual: {it['name'] if it else ''}"
+        db.execute("INSERT INTO documents (title, filename, stored_name, item_id, uploaded_at) VALUES (?,?,?,?,?)",
+                   (title, name, stored, item_id, datetime.now().isoformat(timespec="seconds")))
+    return back(toast_url(f"/items/{item_id}#docs", "Manual attached"))
 
 
 @app.get("/search")
@@ -1025,6 +1155,7 @@ def item_detail(request: Request, item_id: int):
         if item["warranty_until"] else None
     return render(request, "item_detail.html", item=item, rooms=rooms, docs=docs, tasks=tasks,
                   categories=plan.ITEM_CATEGORIES, presets=plan.PRESETS,
+                  manual_links=__import__("app.capture", fromlist=["x"]).manual_links(item["brand"], item["model"]),
                   history=history, photos=photos, upcoming=upcoming, contractors=contractors,
                   supplies=supplies, spent=spent, w_days=w_days, all_contractors=all_contractors,
                   replace_year=replacement_year(item))
@@ -1051,20 +1182,7 @@ def item_delete(item_id: int):
 
 # ---------- photos ----------
 
-def save_image(data: bytes) -> tuple[str, str]:
-    try:
-        img = Image.open(io.BytesIO(data))
-        img = ImageOps.exif_transpose(img).convert("RGB")
-    except (UnidentifiedImageError, OSError):
-        raise HTTPException(400, "Unsupported image (use JPEG, PNG, WebP or GIF)")
-    base = uuid.uuid4().hex
-    up = data_dir() / "uploads"
-    full = img.copy()
-    full.thumbnail((2000, 2000))
-    full.save(up / f"{base}.jpg", "JPEG", quality=85, optimize=True)
-    thumb = ImageOps.fit(img, (480, 360), Image.LANCZOS)
-    thumb.save(up / f"{base}_t.jpg", "JPEG", quality=80, optimize=True)
-    return f"{base}.jpg", f"{base}_t.jpg"
+save_image = media.save_image  # shared with the API
 
 
 def purge_photos(db, col: str, ref: int) -> None:
