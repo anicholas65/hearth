@@ -7,9 +7,51 @@
   "background_color": "#F5F1E8",
   "theme_color": "#36594B",
   "icons": [
-    {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png"},
-    {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png"},
-    {"src": "/static/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
-    {"src": "/static/brand/hearth-icon.svg", "sizes": "any", "type": "image/svg+xml"}
+    {
+      "src": "/static/brand/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/brand/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/brand/hearth-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "id": "/",
+  "scope": "/",
+  "orientation": "any",
+  "shortcuts": [
+    {
+      "name": "Shopping list",
+      "url": "/shopping",
+      "icons": [
+        {
+          "src": "/static/brand/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "url": "/tasks",
+      "icons": [
+        {
+          "src": "/static/brand/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

@@ -41,12 +41,32 @@
 <button class="chip" title="Bought {{ f.n }}×">{{ i('plus') }} {{ f.name }}</button></form>{% endfor %}</div>
 {% else %}<p class="muted" style="margin:0">Items you've bought before show up here for one-tap re-adding.</p>{% endif %}</div></section>
 </div></div>
+<p class="badge warn" id="offline-badge" role="status" hidden style="position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:30"></p>
+<script src="/static/offline.js?v={{ about.version }}"></script>
 <script>
-document.querySelectorAll('form.tgl, form.del').forEach(f => f.addEventListener('submit', e => {
+// Check-off, delete and quick-add go through the offline queue: instant UI, synced when back online.
+document.querySelectorAll('form.tgl, form.del').forEach(f => f.addEventListener('submit', async e => {
   e.preventDefault();
   if (f.classList.contains('del') && !confirm('Remove from list?')) return;
-  f.closest('.row').classList.add('leaving');
-  fetch(f.action, {method: 'POST', headers: {'X-Requested-With': 'fetch'}}).then(() => location.reload());
+  const row = f.closest('.row');
+  const optimistic = () => f.classList.contains('del') ? row.remove() : row.classList.toggle('done');
+  row.classList.add('leaving');
+  const body = f.classList.contains('tgl') ? 'to=' + (row.classList.contains('done') ? 'needed' : 'checked') : '';
+  const online = await hearthQueue.post(f.action, body, optimistic);
+  if (online) location.reload(); else row.classList.remove('leaving');
 }));
+const qa = document.querySelector('form.quickadd');
+qa?.addEventListener('submit', async e => {
+  if (navigator.onLine) return;  // normal post when online
+  e.preventDefault();
+  const fd = new FormData(qa), name = fd.get('name');
+  await hearthQueue.post('/shopping', new URLSearchParams(fd), () => {
+    const list = document.querySelector('.card .list') || document.querySelector('.card .card-b');
+    const el = document.createElement('div'); el.className = 'row shop';
+    el.innerHTML = '<span class="badge warn">waiting to sync</span><div class="grow"><span class="nm"></span></div>';
+    el.querySelector('.nm').textContent = name; list?.prepend(el);
+  });
+  qa.reset();
+});
 </script>
 {% endblock %}

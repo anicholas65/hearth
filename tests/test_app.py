@@ -747,3 +747,18 @@ def test_every_page_links_resolve(client):
                 assert seen[path].status_code == 200, f"{page} -> {path}"
             if frag:
                 assert f'id="{frag}"' in seen[path].text, f"{page} -> {path}#{frag}"
+
+
+def test_pwa_service_worker_manifest_and_idempotent_toggle(client):
+    sw = client.get("/sw.js")
+    assert sw.status_code == 200 and sw.headers["service-worker-allowed"] == "/"
+    assert "__VERSION__" not in sw.text and "hearth-" in sw.text
+    m = client.get("/static/manifest.webmanifest").json()
+    assert m["display"] == "standalone" and m["start_url"] == "/" and any(i.get("purpose") == "maskable" for i in m["icons"])
+    assert 'rel="manifest"' in client.get("/").text and client.get("/static/offline.html").status_code == 200
+    client.post("/shopping", data={"list": "groceries", "name": "milk"})
+    for _ in range(2):  # replayed twice offline -> still checked
+        client.post("/shopping/1/toggle", data={"to": "checked"}, headers={"X-Requested-With": "fetch"})
+    assert _shop(client)["milk"]["status"] == "checked"
+    client.post("/shopping/1/toggle", headers={"X-Requested-With": "fetch"})  # plain toggle still flips
+    assert _shop(client)["milk"]["status"] == "needed"

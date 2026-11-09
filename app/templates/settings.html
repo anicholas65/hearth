@@ -72,8 +72,8 @@
 <label>Server URL for devices <span class="hint">usually https://hearth.&lt;tailnet&gt;.ts.net (auto-detected when Tailscale runs in the container)</span><input name="public_url" value="{{ remote.public_url }}" placeholder="https://hearth.example.ts.net"></label>
 <label>ntfy server <span class="hint">push for phones; from APPRISE_URLS if blank</span><input name="ntfy_server" value="{{ remote.notify.ntfyServer or '' }}" placeholder="https://ntfy.sh"></label>
 <label>ntfy topic <span class="hint">long and unguessable</span><input name="ntfy_topic" value="{{ remote.notify.ntfyTopic or '' }}" placeholder="hearth-7f3k9q"></label>
-<div><button class="ghost">Save</button></div>
-<p class="muted small" style="margin:0">Don't enable Tailscale <b>Funnel</b> for Hearth: it would put your home data on the public internet.</p>
+<div class="actions"><button class="ghost">Save</button>{% if remote.notify.ntfyTopic %}<a class="btn ghost sm" href="{{ remote.notify.ntfyServer }}/{{ remote.notify.ntfyTopic }}" target="_blank" rel="noopener">{{ i('bell') }} Subscribe on this device</a>{% endif %}</div>
+<p class="muted small" style="margin:0">Push uses ntfy (no Google services): install the ntfy app or open the link above and subscribe. Don't enable Tailscale <b>Funnel</b> for Hearth: it would put your home data on the public internet.</p>
 </form></div>
 </div></section>
 <section class="card" id="brand">{{ head('Hearth logo', 'star', ('<span class="badge ok">In use</span>' if brand.v2 else '<span class="badge">Preview</span>')) }}<div class="card-b">

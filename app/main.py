@@ -254,6 +254,13 @@ def dashboard(request: Request):
                   recent=recent, shop=shop, n_items=n_items)
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    js = (HERE / "static" / "sw.js").read_text().replace("__VERSION__", __version__)
+    return Response(js, media_type="text/javascript",
+                    headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+
+
 @app.post("/setup/dismiss")
 def setup_dismiss():
     set_setting("setup_dismissed", "1")
@@ -673,12 +680,13 @@ def shopping_again(list: str = Form(...), name: str = Form(...)):
 
 
 @app.post("/shopping/{sid:int}/toggle")
-def shopping_toggle(request: Request, sid: int):
+def shopping_toggle(request: Request, sid: int, to: str = Form(None)):
+    """Flip checked/needed. With `to`, set that state (idempotent: safe for offline replays)."""
     with get_db() as db:
         r = db.execute("SELECT list, status FROM shopping_items WHERE id=?", (sid,)).fetchone()
         if not r:
             raise HTTPException(404)
-        new = "needed" if r["status"] == "checked" else "checked"
+        new = to if to in ("needed", "checked") else ("needed" if r["status"] == "checked" else "checked")
         db.execute("UPDATE shopping_items SET status=?, checked_at=? WHERE id=?",
                    (new, now_s() if new == "checked" else None, sid))
     return _done(request, f"/shopping?list={r['list']}")
