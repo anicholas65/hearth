@@ -135,6 +135,22 @@ def test_theme_cookie(client):
     assert 'data-theme="hearth"' in client.get("/").text  # default theme
 
 
+def test_theme_palette_in_sync_with_css(client):
+    import re
+    from pathlib import Path
+    from app.main import THEMES
+    css = (Path(__file__).parent.parent / "app/static/style.css").read_text()
+    for key, (_, hues) in THEMES.items():
+        if hues is None:
+            continue
+        h, s, n, h2 = hues
+        assert f"[data-theme={key}]{{--h:{h};--s:{s}%;--n:{n}%;--h2:{h2}}}" in css, key
+    client.cookies.set("theme", "ocean"); client.cookies.set("mode", "light")
+    html = client.get("/").text
+    assert '<meta name="theme-color" content="hsl(205 22% 95%)">' in html
+    assert len(re.findall(r'class="chip" data-theme="', client.get("/settings").text)) == len(THEMES)
+
+
 def test_unfiled_capture_and_filing(client):
     client.post("/rooms", data={"name": "Garage"})
     client.post("/items", data={"name": "Furnace"})

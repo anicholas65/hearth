@@ -2,8 +2,8 @@
 <html lang="en" data-theme="{{ theme }}" data-mode="{{ mode }}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{% block title %}Hearth{% endblock %} · Hearth</title>
-<meta name="theme-color" content="#F5F1E8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#161B19" media="(prefers-color-scheme: dark)">
+{% if mode == 'auto' %}<meta name="theme-color" content="{{ theme_color[0] }}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{ theme_color[1] }}" media="(prefers-color-scheme: dark)">{% else %}<meta name="theme-color" content="{{ theme_color[0] if mode == 'light' else theme_color[1] }}">{% endif %}
 <link rel="stylesheet" href="/static/style.css?v={{ about.version }}">
 <link rel="icon" href="{{ brand.favicon }}"{% if brand.v2 %} type="image/svg+xml"{% endif %}>
 <link rel="apple-touch-icon" href="{{ '/static/brand/apple-touch-icon.png' if brand.v2 else '/static/icon.png' }}">

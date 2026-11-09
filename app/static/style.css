@@ -1,7 +1,7 @@
 /* =====================================================================
-   Hearth 2.1 design system
+   Hearth 3.1 design system
    1. Tokens (Hearth light/dark + legacy hue themes)  2. Base & type
-   3. Layout & navigation  4. Components  5. Page patterns  6. A11y/motion
+   3. Layout & navigation  4. Components  5. Page patterns  6. A11y/motion  7. Depth
    ===================================================================== */
 
 /* ---------- 1. Tokens ---------- */
@@ -15,42 +15,72 @@
   --r-sm:8px;--r:12px;--r-lg:16px;--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;
   --touch:40px;
 }
-/* Hearth light (default) — text/icon pairs checked for WCAG AA */
-:root,:root[data-theme=hearth]{
-  --bg:#F5F1E8;--surface:#FFFDF8;--surface-2:#EFEAE0;--fg:#252B29;--muted:#5A625E;
-  --line:#E3DDD0;--line-strong:#C6BDAB;--field:#8A8374;
-  --accent:#36594B;--accent-hover:#2B493D;--on-accent:#FFFFFF;--accent-soft:#E2EAE3;
-  --accent-2:#BE855B;--copper-text:#8A5530;--copper-soft:#F5E7DB;--sage:#90A795;--sage-soft:#E6ECE6;
-  --bad:#B42318;--bad-soft:#FDECEA;--warn:#8A5A00;--warn-soft:#FFF2D4;--ok:#2E6A4E;--ok-soft:#E2F0E7;
-  --s1:#2a78d6;--s2:#eb6834;
-  --shadow:0 1px 2px rgb(37 43 41 / .05),0 2px 10px rgb(37 43 41 / .04);
-  --shadow-lg:0 18px 48px rgb(37 43 41 / .22);
-  color-scheme:light}
-@media (prefers-color-scheme:dark){:root[data-mode=auto],:root[data-theme=hearth][data-mode=auto]{
-  --bg:#161B19;--surface:#1E2421;--surface-2:#262D2A;--fg:#F1EDE4;--muted:#A8B0AB;
-  --line:#303935;--line-strong:#46504B;--field:#6E7973;
-  --accent:#9CC3AD;--accent-hover:#B4D4C2;--on-accent:#12201A;--accent-soft:#24362D;
-  --accent-2:#D39A6E;--copper-text:#E2B088;--copper-soft:#3A2B20;--sage:#7D9583;--sage-soft:#26302A;
-  --bad:#F97066;--bad-soft:#3A1714;--warn:#F2B53A;--warn-soft:#33260A;--ok:#6FD3A0;--ok-soft:#10301F;
-  --s1:#3987e5;--s2:#d95926;
-  --shadow:0 1px 2px #0006;--shadow-lg:0 18px 48px #000a;color-scheme:dark}}
-:root[data-mode=dark],:root[data-theme=hearth][data-mode=dark]{
-  --bg:#161B19;--surface:#1E2421;--surface-2:#262D2A;--fg:#F1EDE4;--muted:#A8B0AB;
-  --line:#303935;--line-strong:#46504B;--field:#6E7973;
-  --accent:#9CC3AD;--accent-hover:#B4D4C2;--on-accent:#12201A;--accent-soft:#24362D;
-  --accent-2:#D39A6E;--copper-text:#E2B088;--copper-soft:#3A2B20;--sage:#7D9583;--sage-soft:#26302A;
-  --bad:#F97066;--bad-soft:#3A1714;--warn:#F2B53A;--warn-soft:#33260A;--ok:#6FD3A0;--ok-soft:#10301F;
-  --s1:#3987e5;--s2:#d95926;
-  --shadow:0 1px 2px #0006;--shadow-lg:0 18px 48px #000a;color-scheme:dark}
-/* Legacy colour themes (Ember…Slate): accent derived from hue; neutrals stay Hearth's */
-:root[data-theme=ember]{--h:18;--s:62%}:root[data-theme=forest]{--h:152;--s:42%}:root[data-theme=ocean]{--h:205;--s:68%}
-:root[data-theme=plum]{--h:275;--s:42%}:root[data-theme=rose]{--h:345;--s:58%}:root[data-theme=slate]{--h:215;--s:18%}
-:root:not([data-theme=hearth])[data-theme]{--accent:hsl(var(--h) var(--s) 36%);--accent-hover:hsl(var(--h) var(--s) 30%);
-  --accent-soft:hsl(var(--h) var(--s) 92%);--accent-2:hsl(calc(var(--h) + 28) var(--s) 50%)}
-:root:not([data-theme=hearth])[data-theme][data-mode=dark]{--accent:hsl(var(--h) var(--s) 68%);--accent-hover:hsl(var(--h) var(--s) 75%);
-  --accent-soft:hsl(var(--h) 28% 20%);--on-accent:hsl(var(--h) 30% 10%)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=hearth])[data-theme][data-mode=auto]{--accent:hsl(var(--h) var(--s) 68%);
-  --accent-hover:hsl(var(--h) var(--s) 75%);--accent-soft:hsl(var(--h) 28% 20%);--on-accent:hsl(var(--h) 30% 10%)}}
+/* Mode only sets color-scheme; every colour token is a light-dark() pair, so light, dark and
+   auto (follow the device) all resolve through one set of definitions per theme. */
+:root,:root[data-mode=dark]{color-scheme:dark}
+:root[data-mode=light]{color-scheme:light}
+:root[data-mode=auto]{color-scheme:light dark}
+/* Hearth (default) — hand-tuned pairs, text/icon contrast checked for WCAG AA.
+   Theme selectors aren't limited to :root so Settings can preview each theme in place. */
+:root,[data-theme=hearth]{
+  --bg:light-dark(#F5F1E8,#141917);--surface:light-dark(#FFFDF8,#1D2320);--surface-top:light-dark(#FFFFFD,#232A27);
+  --surface-2:light-dark(#EFEAE0,#262D2A);--fg:light-dark(#252B29,#F1EDE4);--muted:light-dark(#5A625E,#A8B0AB);
+  --line:light-dark(#E3DDD0,#2E3733);--line-strong:light-dark(#C6BDAB,#46504B);--field:light-dark(#8A8374,#6E7973);
+  --accent:light-dark(#36594B,#9CC3AD);--accent-hover:light-dark(#2B493D,#B4D4C2);--on-accent:light-dark(#FFFFFF,#12201A);
+  --accent-soft:light-dark(#E2EAE3,#24362D);--accent-2:light-dark(#BE855B,#D39A6E);--copper-text:light-dark(#8A5530,#E2B088);
+  --copper-soft:light-dark(#F5E7DB,#3A2B20);--on-copper:light-dark(#FFFFFF,#1A120C);
+  --sage:light-dark(#90A795,#7D9583);--sage-soft:light-dark(#E6ECE6,#26302A);
+  --bad:light-dark(#B42318,#F97066);--bad-soft:light-dark(#FDECEA,#3A1714);--warn:light-dark(#8A5A00,#F2B53A);
+  --warn-soft:light-dark(#FFF2D4,#33260A);--ok:light-dark(#2E6A4E,#6FD3A0);--ok-soft:light-dark(#E2F0E7,#10301F);
+  --s1:light-dark(#2a78d6,#3987e5);--s2:light-dark(#eb6834,#d95926);
+  /* depth: shadow tint, highlight edge */
+  --sh:light-dark(rgb(52 44 30 / .07),rgb(0 0 0 / .32));--sh-2:light-dark(rgb(52 44 30 / .12),rgb(0 0 0 / .5));
+  --hi:light-dark(rgb(255 255 255 / .9),rgb(255 255 255 / .05));
+}
+/* Hue themes: the whole palette (neutrals, accent, secondary) is tinted from --h / --s / --h2.
+   Keep these numbers in sync with THEMES in app/main.py (tests/test_app.py checks). */
+[data-theme=ember]{--h:16;--s:62%;--n:22%;--h2:38}
+[data-theme=forest]{--h:152;--s:40%;--n:14%;--h2:30}
+[data-theme=ocean]{--h:205;--s:66%;--n:22%;--h2:18}
+[data-theme=plum]{--h:275;--s:38%;--n:14%;--h2:335}
+[data-theme=rose]{--h:345;--s:56%;--n:18%;--h2:22}
+[data-theme=slate]{--h:215;--s:22%;--n:12%;--h2:38}
+[data-theme]:not([data-theme=hearth]){
+  --bg:light-dark(hsl(var(--h) var(--n) 95%),hsl(var(--h) var(--n) 8%));
+  --surface:light-dark(hsl(var(--h) var(--n) 99%),hsl(var(--h) var(--n) 11.5%));
+  --surface-top:light-dark(hsl(var(--h) var(--n) 100%),hsl(var(--h) var(--n) 14%));
+  --surface-2:light-dark(hsl(var(--h) var(--n) 91%),hsl(var(--h) var(--n) 15.5%));
+  --fg:light-dark(hsl(var(--h) 18% 14%),hsl(var(--h) 20% 93%));
+  --muted:light-dark(hsl(var(--h) 8% 37%),hsl(var(--h) 9% 68%));
+  --line:light-dark(hsl(var(--h) var(--n) 86%),hsl(var(--h) var(--n) 18.5%));
+  --line-strong:light-dark(hsl(var(--h) var(--n) 74%),hsl(var(--h) var(--n) 29%));
+  --field:light-dark(hsl(var(--h) 8% 52%),hsl(var(--h) 8% 45%));
+  --accent:light-dark(hsl(var(--h) var(--s) 36%),hsl(var(--h) var(--s) 70%));
+  --accent-hover:light-dark(hsl(var(--h) var(--s) 29%),hsl(var(--h) var(--s) 78%));
+  --on-accent:light-dark(#fff,hsl(var(--h) 30% 9%));
+  --accent-soft:light-dark(hsl(var(--h) var(--s) 91%),hsl(var(--h) 30% 19%));
+  --accent-2:light-dark(hsl(var(--h2) 62% 52%),hsl(var(--h2) 62% 64%));
+  --copper-text:light-dark(hsl(var(--h2) 60% 32%),hsl(var(--h2) 70% 75%));
+  --copper-soft:light-dark(hsl(var(--h2) 70% 92%),hsl(var(--h2) 32% 17%));
+  --on-copper:light-dark(#fff,hsl(var(--h2) 40% 9%));
+  --sage:light-dark(hsl(var(--h) 16% 62%),hsl(var(--h) 14% 52%));
+  --sage-soft:light-dark(hsl(var(--h) 22% 90%),hsl(var(--h) 14% 17%));
+  --sh:light-dark(hsl(var(--h) 40% 20% / .08),rgb(0 0 0 / .34));--sh-2:light-dark(hsl(var(--h) 40% 20% / .14),rgb(0 0 0 / .52));
+}
+/* browsers without light-dark() (pre-2024) get plain Hearth dark */
+@supports not (color:light-dark(#000,#fff)){:root,[data-theme]{
+  --bg:#141917;--surface:#1D2320;--surface-top:#232A27;--surface-2:#262D2A;--fg:#F1EDE4;--muted:#A8B0AB;--line:#2E3733;--line-strong:#46504B;
+  --field:#6E7973;--accent:#9CC3AD;--accent-hover:#B4D4C2;--on-accent:#12201A;--accent-soft:#24362D;--accent-2:#D39A6E;--copper-text:#E2B088;
+  --copper-soft:#3A2B20;--on-copper:#1A120C;--sage:#7D9583;--sage-soft:#26302A;--bad:#F97066;--bad-soft:#3A1714;--warn:#F2B53A;--warn-soft:#33260A;
+  --ok:#6FD3A0;--ok-soft:#10301F;--s1:#3987e5;--s2:#d95926;--sh:rgb(0 0 0 / .32);--sh-2:rgb(0 0 0 / .5);--hi:rgb(255 255 255 / .05)}}
+/* elevation scale (uses the tinted shadow colour) */
+:root{
+  --e1:inset 0 1px 0 var(--hi),0 1px 2px var(--sh),0 2px 8px var(--sh);
+  --e2:inset 0 1px 0 var(--hi),0 2px 4px var(--sh),0 12px 28px -6px var(--sh-2);
+  --e3:0 4px 10px var(--sh),0 24px 56px -8px var(--sh-2);
+  --inset:inset 0 1px 2px var(--sh);
+  --shadow:var(--e1);--shadow-lg:var(--e3);
+}
 /* aliases kept for templates written against the 2.0 names */
 :root{--card:var(--surface);--tint:var(--surface-2);--radius:var(--r-lg)}
 
@@ -82,9 +112,8 @@ nav.primary{display:flex;gap:2px;margin-left:8px}
 nav.primary a{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;color:var(--muted);text-decoration:none;font-weight:600;font-size:15px}
 nav.primary a:hover{color:var(--fg);background:var(--surface-2)}
 nav.primary a.on{background:var(--accent-soft);color:var(--accent)}
-.cnt{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--copper-text);color:#fff;font-size:11px;font-weight:700;line-height:1}
+.cnt{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--copper-text);color:var(--on-copper);font-size:11px;font-weight:700;line-height:1}
 .cnt.bad{background:var(--bad)}
-:root[data-mode=dark] .cnt{color:#1a1a1a}
 .hsearch{flex:1;max-width:360px;margin-left:auto;position:relative}
 .hsearch input{padding:8px 40px 8px 36px;border-radius:10px;background:var(--surface);border-color:var(--line)}
 .hsearch>svg.i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
@@ -499,8 +528,11 @@ mark{background:var(--copper-soft);color:inherit;border-radius:3px;padding:0 1px
 .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
 .swatch{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);padding:0;gap:0;font-weight:600}
 .swatch input{position:absolute;opacity:0;pointer-events:none}
-.swatch .chip{height:52px;display:flex;border:0;border-radius:0;padding:0;min-height:0}
+.swatch .chip{height:52px;display:flex;align-items:stretch;border:0;border-radius:0;padding:0;min-height:0}
 .swatch .chip i{flex:1}
+.swatch .chip{background:var(--bg);padding:10px;gap:6px}
+.swatch .chip i{border-radius:6px;box-shadow:inset 0 1px 0 var(--hi),0 1px 2px var(--sh)}
+.swatch .chip .p1{background:var(--accent);flex:2}.swatch .chip .p2{background:var(--accent-2)}.swatch .chip .p3{background:var(--surface);border:1px solid var(--line)}
 .swatch .name{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;font-size:13px}
 .swatch:has(input:checked){border-color:var(--accent)}
 .swatch:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:2px}
@@ -600,3 +632,70 @@ dialog.palette{width:min(640px,94vw);margin-top:12vh;padding:0}
 .qty{display:inline-flex;align-items:center;gap:6px}
 .qty b{min-width:52px;text-align:center}
 .demo-banner{background:var(--copper-soft);color:var(--copper-text);text-align:center;font-weight:600;font-size:var(--fs-sm);padding:6px 12px;border-bottom:1px solid var(--line)}
+
+/* =====================================================================
+   7. Depth: layered surfaces, tinted shadows, raised controls, inset wells
+   ===================================================================== */
+body{background:
+  radial-gradient(1100px 520px at 8% -8%,color-mix(in oklab,var(--accent) 9%,transparent),transparent 70%),
+  radial-gradient(900px 480px at 100% -4%,color-mix(in oklab,var(--accent-2) 7%,transparent),transparent 70%),
+  var(--bg) no-repeat;min-height:100vh}
+header{box-shadow:0 1px 0 var(--line),0 8px 24px -16px var(--sh-2);border-bottom-color:transparent}
+.subnav{background:color-mix(in srgb,var(--surface) 40%,transparent)}
+/* raised surfaces: soft top-lit gradient + highlight edge */
+.card,.stat,.att a,.tile,.room,.trow,.qa>a,.qa label,.qa>button,.welcome,.facts{
+  background-image:linear-gradient(180deg,var(--surface-top),var(--surface) 120px)}
+.card,.stat,.att a,.tile,.room,.facts{box-shadow:var(--e1)}
+.trow,.qa>a,.qa label,.qa>button{box-shadow:inset 0 1px 0 var(--hi),0 1px 2px var(--sh)}
+.welcome{position:relative;overflow:hidden;box-shadow:var(--e2);
+  background:radial-gradient(420px 220px at 88% 30%,color-mix(in oklab,var(--accent) 16%,transparent),transparent 70%),
+    linear-gradient(115deg,var(--surface-top) 40%,color-mix(in oklab,var(--sage-soft) 80%,var(--surface)))}
+.welcome::after{content:"";position:absolute;inset:auto -10% -60% 40%;height:120%;pointer-events:none;
+  background:radial-gradient(closest-side,color-mix(in oklab,var(--accent-2) 10%,transparent),transparent)}
+.welcome>*{position:relative;z-index:1}
+/* lift on hover (pointer devices only; transform-free under reduced motion) */
+.stat,.att a,.tile,.room,.trow,.qa>a,.qa label,.qa>button,.chip,.filters a{transition:transform .16s ease,box-shadow .16s ease,border-color .14s,background-color .14s,color .14s}
+@media (hover:hover){
+  a.stat:hover,.att a:hover,.tile:hover,.room:hover,.qa>a:hover,.qa label:hover,.qa>button:hover{transform:translateY(-2px);box-shadow:var(--e2)}
+  .trow:hover{box-shadow:var(--e2);border-color:var(--line-strong)}
+}
+@media (prefers-reduced-motion:reduce){a.stat:hover,.att a:hover,.tile:hover,.room:hover,.qa>a:hover,.qa label:hover,.qa>button:hover{transform:none}}
+/* inset wells inside cards */
+.tl,.ins>div,.whatis form,.pop,.explain{box-shadow:var(--inset)}
+.tl{background:color-mix(in oklab,var(--bg) 70%,var(--surface))}
+.progress,.meter .track,.bar-track,.hbar .t,.fresh,.ring .ring-bg{box-shadow:var(--inset)}
+.progress i,.bar-fill,.hbar .t i,.fresh i{background-image:linear-gradient(180deg,rgb(255 255 255 / .22),transparent)}
+/* icon tiles */
+.stat .ic,.dot,.tl .kind{box-shadow:inset 0 1px 0 var(--hi),inset 0 -1px 0 var(--sh)}
+.stat .ic{background:linear-gradient(160deg,var(--accent-soft),var(--surface-2));color:var(--accent)}
+/* buttons: primary is raised and lit from above; secondary styles stay flat-ish */
+.btn,button{background-image:linear-gradient(180deg,rgb(255 255 255 / .14),rgb(255 255 255 / 0));
+  box-shadow:inset 0 1px 0 rgb(255 255 255 / .22),0 1px 2px var(--sh),0 4px 14px -4px color-mix(in oklab,var(--accent) 45%,transparent)}
+.btn:hover,button:hover{box-shadow:inset 0 1px 0 rgb(255 255 255 / .25),0 2px 4px var(--sh),0 8px 20px -6px color-mix(in oklab,var(--accent) 55%,transparent)}
+.btn:active,button:active{box-shadow:inset 0 2px 4px rgb(0 0 0 / .18)}
+.ghost,button.ghost,.btn.ghost,.danger,button.danger,.iconbtn,.linkbtn,.tick,.done-btn,.toast a,.toast button,
+.qa>button,.row.shop .del button,.gallery figure .acts button,button.room,.qgrid button.q{background-image:none;box-shadow:inset 0 1px 0 var(--hi),0 1px 2px var(--sh)}
+.linkbtn,.row.shop .del button,.toast a,.toast button{box-shadow:none}
+.iconbtn:hover,.ghost:hover,button.ghost:hover,.btn.ghost:hover{box-shadow:inset 0 1px 0 var(--hi),0 3px 10px -2px var(--sh-2)}
+.tabbar .plus{box-shadow:inset 0 1px 0 rgb(255 255 255 / .25),0 8px 20px -4px color-mix(in oklab,var(--accent) 60%,transparent),0 2px 6px var(--sh-2)}
+.tabbar{box-shadow:0 -8px 24px -14px var(--sh-2)}
+/* fields sit slightly recessed */
+input,select,textarea{box-shadow:inset 0 1px 2px var(--sh)}
+input:focus,select:focus,textarea:focus{box-shadow:inset 0 1px 2px var(--sh),0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+input[type=checkbox],input[type=radio]{box-shadow:none}
+.pal-in input,.pal-in input:focus{box-shadow:none}
+/* segmented / tabs / filters */
+.seg,.tabs{box-shadow:var(--inset)}
+.seg label:has(input:checked){background-image:linear-gradient(180deg,rgb(255 255 255 / .14),transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / .2)}
+.tabs a.on,.subnav a.on{background-image:linear-gradient(180deg,var(--surface-top),var(--surface));box-shadow:var(--e1)}
+.filters a.on{box-shadow:0 2px 8px -2px var(--sh-2)}
+nav.primary a.on{box-shadow:inset 0 1px 0 var(--hi)}
+/* overlays */
+dialog,.tip,.toast,.tip-i::after{box-shadow:var(--e3)}
+dialog{background-image:linear-gradient(180deg,var(--surface-top),var(--surface) 160px)}
+dialog::backdrop{background:rgb(10 12 11 / .5);backdrop-filter:blur(3px)}
+/* settings: theme previews show the real palette for that theme */
+.swatch{box-shadow:var(--e1);transition:transform .16s,box-shadow .16s,border-color .14s}
+@media (hover:hover){.swatch:hover{transform:translateY(-2px);box-shadow:var(--e2)}}
+.swatch:has(input:checked){box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 25%,transparent),var(--e2)}
+.swatch .chip{height:58px}

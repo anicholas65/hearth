@@ -167,16 +167,16 @@ def num(v: str | None, cast=float):
     return cast(v) if v is not None else None
 
 
-def _hsl_swatch(h, s):
-    return [f"hsl({h} {s}% 42%)", f"hsl({h + 28} {s}% 55%)", f"hsl({h} {s}% 90%)"]
-
-
-THEMES = {  # key: (label, swatch colours)
-    "hearth": ("Hearth", ["#365D4B", "#C68556", "#A8B9A2", "#F5F1E8"]),
-    "ember": ("Ember", _hsl_swatch(18, 62)), "forest": ("Forest", _hsl_swatch(152, 42)),
-    "ocean": ("Ocean", _hsl_swatch(205, 68)), "plum": ("Plum", _hsl_swatch(275, 42)),
-    "rose": ("Rose", _hsl_swatch(345, 58)), "slate": ("Slate", _hsl_swatch(215, 18)),
+THEMES = {  # key: (label, (hue, accent sat %, neutral sat %, secondary hue)); mirrored in style.css
+    "hearth": ("Hearth", None),
+    "ember": ("Ember", (16, 62, 22, 38)), "forest": ("Forest", (152, 40, 14, 30)),
+    "ocean": ("Ocean", (205, 66, 22, 18)), "plum": ("Plum", (275, 38, 14, 335)),
+    "rose": ("Rose", (345, 56, 18, 22)), "slate": ("Slate", (215, 22, 12, 38)),
 }
+THEME_COLOR = {"hearth": ("#F5F1E8", "#141917")}  # browser bar colour (light, dark)
+for _k, (_l, _v) in THEMES.items():
+    if _v:
+        THEME_COLOR[_k] = (f"hsl({_v[0]} {_v[2]}% 95%)", f"hsl({_v[0]} {_v[2]}% 8%)")
 SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
     "home": ("Today", "home", []),
     "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar"),
@@ -211,6 +211,7 @@ def render(request: Request, name: str, **ctx):
     ctx["theme"] = t if t in THEMES else "hearth"
     ctx["mode"] = m if m in MODES else "dark"  # dark by default; light/auto in Settings
     ctx["themes"] = THEMES
+    ctx["theme_color"] = THEME_COLOR[ctx["theme"]]
     ctx["about"] = {"version": __version__, "developer": DEVELOPER,
                      "repo": REPO_URL}
     ctx["sections"] = SECTIONS

@@ -3,9 +3,9 @@
 <div class="page-head"><div><h1>Settings</h1></div></div>
 <section class="card accent" id="theme">{{ head('Appearance', 'palette') }}<div class="card-b">
 <form method="post" action="/theme" id="themeform">
-<div class="swatches" style="margin-bottom:16px">{% for key, (label, cols) in themes.items() %}
+<div class="swatches" style="margin-bottom:16px">{% for key, (label, hues) in themes.items() %}
 <label class="swatch"><input type="radio" name="theme" value="{{ key }}" {{ 'checked' if key == theme }} onchange="this.form.submit()">
-<span class="chip">{% for c in cols %}<i style="background:{{ c }}"></i>{% endfor %}</span>
+<span class="chip" data-theme="{{ key }}" aria-hidden="true"><i class="p1"></i><i class="p2"></i><i class="p3"></i></span>
 <span class="name">{{ label }} <span class="tick2">{{ i("check") }}</span></span></label>{% endfor %}</div>
 <div class="seg" role="radiogroup" aria-label="Mode">{% for m, ic in [('auto','auto'),('light','sun'),('dark','moon')] %}
 <label><input type="radio" name="mode" value="{{ m }}" {{ 'checked' if m == mode }} onchange="this.form.submit()">{{ i(ic) }} {{ m|capitalize }}</label>{% endfor %}</div>
