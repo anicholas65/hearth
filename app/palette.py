@@ -83,7 +83,7 @@ def interpret(text: str, today: date | None = None) -> dict:
         lst = "supplies" if m.group(2) and m.group(2).lower().startswith("suppl") else "groceries"
         items = [shopping.parse_quick(p)[0] for p in re.split(r",|\band\b", m.group(1)) if p.strip()]
         return {"kind": "shop", "list": lst, "text": m.group(1),
-                "label": f"Add {', '.join(items)} to {shopping.LISTS[lst]}"}
+                "label": f"Add {', '.join(items)} to {shopping.list_name(lst)}"}
     m = re.match(r"^(?:new|add|create)\s+task\s+(.+?)(?:\s+every\s+(\d+)?\s*(day|week|month|year)s?)?$", q, re.I)
     if m:
         n = int(m[2] or 1)

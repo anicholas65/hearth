@@ -100,14 +100,14 @@ class PairOut(BaseModel):
           summary="Exchange a one-time pair code (from the Settings QR) for a device token")
 def pair(body: PairIn, request: Request):
     ip = request.client.host if request.client else "?"
-    recent = [t for t in _attempts.get(ip, []) if t > time.time() - 600]
+    recent = [t for t in _attempts.get(ip, []) if t > time.time() - 600]  # failed attempts only
     if len(recent) >= 10:
-        raise HTTPException(429, "Too many pairing attempts; try again in a few minutes")
-    _attempts[ip] = recent + [time.time()]
+        raise HTTPException(429, "Too many failed pairing attempts; try again in a few minutes")
     code = body.pairCode.strip().upper().replace("-", "").replace(" ", "")
     with get_db() as db:
         row = db.execute("SELECT * FROM pair_codes WHERE code_hash=?", (_hash(code),)).fetchone()
         if not row or row["used_at"] or row["expires_at"] < now_ts():
+            _attempts[ip] = recent + [time.time()]
             raise HTTPException(401, "Pair code is invalid, used or expired")
         db.execute("UPDATE pair_codes SET used_at=? WHERE code_hash=?", (now_ts(), row["code_hash"]))
         token = "hth_" + secrets.token_urlsafe(32)

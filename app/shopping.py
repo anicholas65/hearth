@@ -65,3 +65,46 @@ def guess_category(name: str, list_key: str = "groceries") -> str:
         if words & kw:
             return cat
     return "Other"
+
+
+# ---------------- lists, pantry, aisle order ----------------
+
+def all_lists() -> dict[str, str]:
+    """key -> display name for every list (built-ins first, then custom lists created via the API)."""
+    from .db import get_db
+    try:
+        with get_db() as db:
+            rows = db.execute("SELECT key, name FROM lists ORDER BY position, id").fetchall()
+        return {r["key"]: r["name"] for r in rows} or dict(LISTS)
+    except Exception:
+        return dict(LISTS)
+
+
+def list_name(key: str) -> str:
+    return all_lists().get(key, LISTS.get(key, "List"))
+
+
+def aisle_order(store: str | None) -> list[str]:
+    """Category order for a store (falls back to the default store layout)."""
+    if not store:
+        return CATEGORY_NAMES
+    from .db import get_db
+    with get_db() as db:
+        cats = [r[0] for r in db.execute("SELECT category FROM store_aisles WHERE store=? ORDER BY position", (store,))]
+    return cats + [c for c in CATEGORY_NAMES if c not in cats] if cats else CATEGORY_NAMES
+
+
+def pantry_restock_check(db, pantry_id: int) -> bool:
+    """Below minimum -> put it on the groceries list (once). Returns True if added."""
+    p = db.execute("SELECT * FROM pantry_items WHERE id=?", (pantry_id,)).fetchone()
+    if not p or p["min_qty"] is None or (p["qty"] or 0) >= p["min_qty"]:
+        return False
+    if db.execute("SELECT 1 FROM shopping_items WHERE status!='bought' AND lower(name)=lower(?)", (p["name"],)).fetchone():
+        return False
+    need = p["min_qty"] - (p["qty"] or 0)
+    qty = f"{need:g} {p['unit']}".strip() if p["unit"] else (f"{need:g}" if need != 1 else None)
+    from datetime import datetime
+    db.execute("INSERT INTO shopping_items (list, name, qty, category, note, added_at, barcode) VALUES (?,?,?,?,?,?,?)",
+               ("groceries", p["name"], qty, p["category"] or guess_category(p["name"]), "low in pantry",
+                datetime.now().isoformat(timespec="seconds"), p["barcode"]))
+    return True

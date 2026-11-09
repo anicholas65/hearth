@@ -1,0 +1,9 @@
+<label>Name<input name="name" required value="{{ e.name if e else '' }}" placeholder="Coffee beans"></label>
+<div class="form"><label>On hand<input name="qty" type="number" step="any" min="0" inputmode="decimal" value="{{ e.qty|n if e else '1' }}"></label>
+<label>Unit<input name="unit" value="{{ (e.unit or '') if e else '' }}" placeholder="bag, kg, roll"></label>
+<label>Minimum <span class="hint">auto-add below this</span><input name="min_qty" type="number" step="any" min="0" value="{{ e.min_qty|n if e else '' }}"></label></div>
+<div class="form"><label>Best before<input name="best_before" type="date" value="{{ (e.best_before or '') if e else '' }}"></label>
+<label>Category<select name="category"><option value="">Auto</option>{% for c in categories %}<option {{ 'selected' if e and e.category == c }}>{{ c }}</option>{% endfor %}</select></label></div>
+<label>Stored in<select name="room_id"><option value="">—</option>{% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if e and e.room_id == r.id }}>{{ r.name }}</option>{% endfor %}</select></label>
+<input type="hidden" name="barcode" value="{{ (e.barcode or '') if e else '' }}">
+<label>Notes<input name="notes" value="{{ (e.notes or '') if e else '' }}"></label>

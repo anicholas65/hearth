@@ -19,6 +19,17 @@
 <datalist id="stores">{% for st in stores %}<option value="{{ st }}">{% endfor %}</datalist>
 </form></div></section>
 
+<form method="get" action="/shopping" class="toolbar" style="margin-bottom:12px"><input type="hidden" name="list" value="{{ lst }}">
+<div class="actions"><label class="small" for="store">Aisle order for</label><select id="store" name="store" onchange="this.form.submit()" style="width:auto;min-height:36px">
+<option value="">Default layout</option>{% for st in stores %}<option {{ 'selected' if store == st }}>{{ st }}</option>{% endfor %}</select>
+<button type="button" class="ghost sm" data-dialog="aisles">{{ i('pencil') }} {{ 'Edit order' if store else 'Set a store order' }}</button></div></form>
+<dialog class="sheet" id="aisles" aria-labelledby="ai-h"><form method="post" action="/stores/aisles">
+<div class="dlg-h"><h2 id="ai-h">Aisle order</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><input type="hidden" name="next" value="/shopping?list={{ lst }}">
+<label>Store<input name="store" required value="{{ store or '' }}" placeholder="Costco" list="stores"></label>
+<label>Aisles in walking order <span class="hint">one per line; drag lines to reorder in your head, then save</span>
+<textarea name="order" rows="12">{{ aisles|join('\n') }}</textarea></label></div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>Save order</button></div></form></dialog>
 <div class="shop-grid">
 <section class="card">{{ head('To get', 'cart', '<a class="badge" href="/shopping/text?list=' ~ lst ~ '" target="_blank">Plain text</a>') }}<div class="card-b">
 {% if groups %}{% for cat, rows in groups.items() %}<div class="dayhead">{{ cat }} <span class="muted">· {{ rows|length }}</span></div>

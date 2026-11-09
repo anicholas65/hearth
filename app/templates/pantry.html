@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% from "_macros.html" import i, head, blank_state %}
+{% block title %}Pantry{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Pantry</h1><p>{{ n }} thing{{ 's' if n != 1 }} on hand. Set a minimum and Hearth adds it to Groceries when you run low.</p></div>
+<div class="actions"><a class="btn ghost" href="/capture?mode=barcode">{{ i('tag') }} Scan</a><button type="button" data-dialog="pantry-new">{{ i('plus') }} Add</button></div></div>
+{% if use_soon or low %}<div class="grid">
+{% if use_soon %}<section class="card">{{ head('Use soon', 'clock', '<span class="badge warn">' ~ use_soon|length ~ '</span>') }}<div class="card-b"><div class="list">
+{% for p in use_soon %}<div class="row"><div class="dot {{ 'bad' if p.best_before < today else 'warn' }}">{{ i('alert' if p.best_before < today else 'clock') }}</div>
+<div class="grow"><b>{{ p.name|cap }}</b><small>{{ 'Expired' if p.best_before < today else 'Best before' }} {{ p.best_before|nicedate }}</small></div></div>{% endfor %}</div></div></section>{% endif %}
+{% if low %}<section class="card">{{ head('Running low', 'cart') }}<div class="card-b"><div class="chips">{% for p in low %}<span class="chip">{{ p.name|cap }} · {{ (p.qty or 0)|n }}/{{ p.min_qty|n }}</span>{% endfor %}</div>
+<p class="muted small" style="margin:8px 0 0">These are on your <a href="/shopping">Groceries list</a>.</p></div></section>{% endif %}
+</div>{% endif %}
+{% if groups %}{% for cat, rows in groups.items() %}<section class="card"><div class="card-b" style="padding-top:12px"><div class="dayhead">{{ cat }}</div><div class="list">
+{% for p in rows %}<div class="row">
+<div class="grow"><b>{{ p.name|cap }}</b><small>{% if p.min_qty is not none %}min {{ p.min_qty|n }}{{ ' ' ~ p.unit if p.unit }}{% endif %}{% if p.best_before %}{{ ' · ' if p.min_qty is not none }}best before {{ p.best_before|nicedate }}{% endif %}{% if p.room_name %} · {{ p.room_name }}{% endif %}</small></div>
+<div class="qty" role="group" aria-label="Quantity of {{ p.name }}">
+<form method="post" action="/pantry/{{ p.id }}/adjust" class="inline"><input type="hidden" name="delta" value="-1"><button class="icon ghost sm" aria-label="One less">−</button></form>
+<b class="num {{ 'warn' if p.min_qty is not none and (p.qty or 0) < p.min_qty }}">{{ (p.qty or 0)|n }}{{ ' ' ~ p.unit if p.unit }}</b>
+<form method="post" action="/pantry/{{ p.id }}/adjust" class="inline"><input type="hidden" name="delta" value="1"><button class="icon ghost sm" aria-label="One more">+</button></form></div>
+<button type="button" class="icon ghost sm" data-dialog="pantry-{{ p.id }}" aria-label="Edit {{ p.name }}">{{ i('pencil') }}</button>
+</div>
+<dialog class="panel" id="pantry-{{ p.id }}" aria-label="Edit {{ p.name }}"><form method="post" action="/pantry">
+<div class="dlg-h"><h2>{{ p.name|cap }}</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack"><input type="hidden" name="id" value="{{ p.id }}">{% set e = p %}{% include "_pantry_form.html" %}</div>
+<div class="dlg-f" style="justify-content:space-between"><button type="submit" form="del-p{{ p.id }}" class="danger">{{ i('trash') }} Remove</button><button>Save</button></div></form></dialog>
+<form id="del-p{{ p.id }}" method="post" action="/pantry/{{ p.id }}/delete" hidden></form>
+{% endfor %}</div></div></section>{% endfor %}
+{% else %}{% call blank_state('kitchen', 'Your pantry is empty', 'Track staples and consumables (rice, coffee, filters, 3D-printer filament) with a minimum, and never run out.') %}
+<button type="button" data-dialog="pantry-new">{{ i('plus') }} Add something</button><a class="btn ghost" href="/capture?mode=barcode">Scan a barcode</a>{% endcall %}{% endif %}
+<dialog class="panel" id="pantry-new" aria-labelledby="pn-h"><form method="post" action="/pantry">
+<div class="dlg-h"><h2 id="pn-h">Add to pantry</h2><button type="button" class="iconbtn" data-close aria-label="Close">{{ i('x') }}</button></div>
+<div class="dlg-b stack">{% set e = none %}{% include "_pantry_form.html" %}</div>
+<div class="dlg-f"><button type="button" class="ghost" data-close>Cancel</button><button>{{ i('plus') }} Add</button></div></form></dialog>
+{% endblock %}

@@ -318,6 +318,11 @@ def _prepare_insert(db, res: Resource, values: dict) -> None:
 
 def _after_write(db, type_: str, rec: dict) -> None:
     """Server-side rules that also apply to API writes (kept tiny and idempotent)."""
+    if type_ == "pantry":
+        from .shopping import pantry_restock_check
+        pid = db.execute("SELECT id FROM pantry_items WHERE uuid=?", (rec["id"],)).fetchone()
+        if pid:
+            pantry_restock_check(db, pid[0])
     if type_ == "completions" and rec.get("task_id"):
         t = db.execute("SELECT id, interval_days FROM tasks WHERE uuid=?", (rec["task_id"],)).fetchone()
         last = db.execute("SELECT MAX(done_on) FROM task_logs WHERE task_id=?", (t["id"],)).fetchone()[0]

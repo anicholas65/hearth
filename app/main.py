@@ -175,7 +175,7 @@ THEMES = {  # key: (label, swatch colours)
 SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
     "home": ("Today", "home", []),
     "plan": ("Plan", "calendar-check", [("/tasks", "Tasks", "wrench"), ("/schedule", "Schedule", "calendar"),
-                                        ("/shopping", "Shopping", "cart")]),
+                                        ("/shopping", "Shopping", "cart"), ("/pantry", "Pantry", "box")]),
     "organize": ("Stuff", "box", [("/items", "Inventory", "box"), ("/documents", "Documents", "file"),
                                   ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users")]),
     "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"), ("/funds", "Funds", "banknote"),
@@ -346,7 +346,7 @@ async def capture_save_barcode(request: Request):
         return back(toast_url(f"/items/{iid}#edit", f"Added {name} to inventory"))
     lk = list_key(f.get("list"))
     shopping_add_text(lk, name, barcode=code)
-    return back(toast_url(f"/shopping?list={lk}", f"Added {name} to {shopping.LISTS.get(lk, 'the list')}"))
+    return back(toast_url(f"/shopping?list={lk}", f"Added {name} to {shopping.list_name(lk)}"))
 
 
 @app.post("/capture/label")
@@ -811,7 +811,7 @@ def schedule_delete(bg: BackgroundTasks, appt_id: int):
 # ---------- shopping list ----------
 
 def list_key(v: str | None) -> str:
-    return v if v in shopping.LISTS else "groceries"
+    return v if v and v in shopping.all_lists() else "groceries"
 
 
 def now_s() -> str:
@@ -819,7 +819,7 @@ def now_s() -> str:
 
 
 @app.get("/shopping")
-def shopping_page(request: Request, list: str = "groceries"):
+def shopping_page(request: Request, list: str = "groceries", store: str = ""):
     lk = list_key(list)
     with get_db() as db:
         rows = db.execute(
@@ -834,17 +834,90 @@ def shopping_page(request: Request, list: str = "groceries"):
             (lk,)).fetchall() if r["name"].lower() not in on_list][:16]
         items = db.execute("SELECT id, name FROM items ORDER BY name").fetchall()
         stores = [r[0] for r in db.execute(
-            "SELECT DISTINCT store FROM shopping_items WHERE store IS NOT NULL ORDER BY store")]
+            "SELECT store FROM shopping_items WHERE store IS NOT NULL UNION SELECT store FROM store_aisles "
+            "UNION SELECT store FROM lists WHERE store IS NOT NULL ORDER BY 1")]
+    store = store.strip() or None
     needed = [r for r in rows if r["status"] == "needed"]
     checked = [r for r in rows if r["status"] == "checked"]
-    order = {c: n for n, c in enumerate(shopping.CATEGORY_NAMES)}
+    aisles = shopping.aisle_order(store)
+    order = {c: n for n, c in enumerate(aisles)}
     groups: dict[str, list] = {}
     for r in sorted(needed, key=lambda r: (order.get(r["category"] or "Other", 99), r["name"].lower())):
         groups.setdefault(r["category"] or "Other", []).append(r)
     est = sum(r["price"] or 0 for r in needed)
-    return render(request, "shopping.html", lst=lk, lists=shopping.LISTS, groups=groups,
+    return render(request, "shopping.html", lst=lk, lists=shopping.all_lists(), groups=groups,
                   checked=checked, counts=counts, frequent=frequent, items=items, stores=stores,
-                  categories=shopping.CATEGORY_NAMES, est=est, n_needed=len(needed))
+                  categories=shopping.CATEGORY_NAMES, est=est, n_needed=len(needed), store=store, aisles=aisles)
+
+
+@app.post("/stores/aisles")
+def store_aisles_save(store: str = Form(...), order: str = Form(""), next: str = Form(None)):
+    cats = [c.strip() for c in order.splitlines() if c.strip()]
+    with get_db() as db:
+        db.execute("DELETE FROM store_aisles WHERE store=?", (store.strip(),))
+        db.executemany("INSERT INTO store_aisles (store, category, position) VALUES (?,?,?)",
+                       [(store.strip(), c, n) for n, c in enumerate(dict.fromkeys(cats))])
+    return back(toast_url(safe_next(next, f"/shopping?store={store.strip()}"), f"Aisle order saved for {store.strip()}"))
+
+
+# ---------- pantry ----------
+
+@app.get("/pantry")
+def pantry_page(request: Request, q: str = ""):
+    soon = (date.today() + timedelta(days=7)).isoformat()
+    with get_db() as db:
+        rows = db.execute("SELECT p.*, r.name AS room_name FROM pantry_items p LEFT JOIN rooms r ON r.id=p.room_id "
+                          + ("WHERE p.name LIKE ? " if q else "") + "ORDER BY p.category, p.name",
+                          (f"%{q}%",) if q else ()).fetchall()
+        rooms = db.execute("SELECT id, name FROM rooms ORDER BY name").fetchall()
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r["category"] or "Other", []).append(r)
+    use_soon = sorted([r for r in rows if r["best_before"] and r["best_before"] <= soon], key=lambda r: r["best_before"])
+    low = [r for r in rows if r["min_qty"] is not None and (r["qty"] or 0) < r["min_qty"]]
+    return render(request, "pantry.html", groups=groups, use_soon=use_soon, low=low, rooms=rooms, q=q, soon=soon,
+                  categories=shopping.CATEGORY_NAMES + ["Consumables"], n=len(rows))
+
+
+@app.post("/pantry")
+async def pantry_save(request: Request):
+    f = await request.form()
+    pid = num(f.get("id"), int)
+    name = blank(f.get("name"))
+    if not name:
+        raise HTTPException(400, "Give it a name.")
+    vals = (name, num(f.get("qty")), blank(f.get("unit")), num(f.get("min_qty")),
+            blank(f.get("category")) or shopping.guess_category(name), num(f.get("room_id"), int),
+            blank(f.get("best_before")), blank(f.get("barcode")), blank(f.get("notes")))
+    with get_db() as db:
+        if pid:
+            db.execute("UPDATE pantry_items SET name=?, qty=?, unit=?, min_qty=?, category=?, room_id=?, best_before=?, "
+                       "barcode=?, notes=? WHERE id=?", (*vals, pid))
+        else:
+            pid = db.execute("INSERT INTO pantry_items (name, qty, unit, min_qty, category, room_id, best_before, "
+                             "barcode, notes) VALUES (?,?,?,?,?,?,?,?,?)", vals).lastrowid
+        added = shopping.pantry_restock_check(db, pid)
+    return back(toast_url("/pantry", f"Saved {name}" + (" · added to Groceries" if added else "")))
+
+
+@app.post("/pantry/{pid}/adjust")
+def pantry_adjust(request: Request, pid: int, delta: float = Form(...)):
+    with get_db() as db:
+        p = db.execute("SELECT name FROM pantry_items WHERE id=?", (pid,)).fetchone()
+        if not p:
+            raise HTTPException(404)
+        db.execute("UPDATE pantry_items SET qty=MAX(0, COALESCE(qty,0)+?) WHERE id=?", (delta, pid))
+        added = shopping.pantry_restock_check(db, pid)
+    if request.headers.get("x-requested-with") == "fetch":
+        return {"added": added}
+    return back(toast_url("/pantry", f"{p['name']} added to Groceries (running low)" if added else f"Updated {p['name']}"))
+
+
+@app.post("/pantry/{pid}/delete")
+def pantry_delete(pid: int):
+    with get_db() as db:
+        db.execute("DELETE FROM pantry_items WHERE id=?", (pid,))
+    return back(toast_url("/pantry", "Removed from pantry"))
 
 
 def _done(request: Request, url: str):
@@ -950,14 +1023,18 @@ def shopping_clear(list: str = Form(...), spent: str = Form(None), store: str = 
     lk = list_key(list)
     ts = now_s()
     with get_db() as db:
+        bought = [r["name"] for r in db.execute(
+            "SELECT name FROM shopping_items WHERE list=? AND status='checked'", (lk,))]
         n = db.execute("UPDATE shopping_items SET status='bought', bought_at=? "
                        "WHERE list=? AND status='checked'", (ts, lk)).rowcount
+        for name in bought:  # restock matching pantry items
+            db.execute("UPDATE pantry_items SET qty=COALESCE(qty,0)+1 WHERE lower(name)=lower(?)", (name,))
         amt = num(spent)
         if amt and amt > 0:
             where = f" at {blank(store)}" if blank(store) else ""
             db.execute("INSERT INTO fund_entries (entry_date, kind, amount, note, category) VALUES (?,?,?,?,?)",
                        (ts[:10], "expense", amt,
-                        f"{shopping.LISTS[lk]}{where} ({n} item{'s' if n != 1 else ''})",
+                        f"{shopping.list_name(lk)}{where} ({n} item{'s' if n != 1 else ''})",
                         "Supplies" if lk == "supplies" else "Groceries"))
     return back(f"/shopping?list={lk}")
 
@@ -968,7 +1045,7 @@ def shopping_text(list: str = "groceries"):
     with get_db() as db:
         rows = db.execute("SELECT * FROM shopping_items WHERE list=? AND status='needed'", (lk,)).fetchall()
     order = {c: n for n, c in enumerate(shopping.CATEGORY_NAMES)}
-    out, cat = [f"{shopping.LISTS[lk]} list"], None
+    out, cat = [f"{shopping.list_name(lk)} list"], None
     for r in sorted(rows, key=lambda r: (order.get(r["category"] or "Other", 99), r["name"].lower())):
         if r["category"] != cat:
             cat = r["category"]
