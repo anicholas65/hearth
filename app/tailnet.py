@@ -58,7 +58,9 @@ def member_for(login: str, name: str | None) -> dict:
             row = db.execute("SELECT * FROM members WHERE login=?", (login,)).fetchone()
         elif not row["last_seen_at"] or row["last_seen_at"][:16] != now[:16]:
             db.execute("UPDATE members SET last_seen_at=?, name=COALESCE(?, name) WHERE id=?", (now, name, row["id"]))
-        return dict(row)
+        m = dict(row)
+        m.pop("password_hash", None)
+        return m
 
 
 _status_cache: tuple[float, dict] = (0.0, {})

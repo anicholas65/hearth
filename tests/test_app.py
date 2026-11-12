@@ -80,6 +80,7 @@ def test_notify_digest(client, monkeypatch):
     assert notify.run_check(today + timedelta(days=1)) == 1
 
 
+@pytest.mark.auth
 def test_basic_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NOTIFY_DISABLED", "1")

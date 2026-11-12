@@ -61,7 +61,8 @@ Optional env overrides: `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE`. Tim
 | `APPRISE_URLS` | – | comma-separated Apprise URLs |
 | `NOTIFY_LEAD_DAYS` | `3` | days ahead to remind |
 | `NOTIFY_CHECK_HOURS` | `1` | check frequency |
-| `HEARTH_USERNAME` / `HEARTH_PASSWORD` | – | set both to enable basic auth |
+| `HEARTH_USERNAME` / `HEARTH_PASSWORD` | – | optional: creates this owner account on first start (otherwise Hearth asks you to create one) |
+| `HEARTH_AUTH` | `on` | `off` disables sign-in (only on a network you fully trust) |
 | `HEARTH_PUBLIC_URL` | – | address paired devices use (Tailscale HTTPS URL) |
 | `ANTHROPIC_API_KEY` | – | optional: Claude reads receipt/label photos |
 | `HEARTH_CLAUDE_MODEL` | `claude-opus-5-5` | model for photo reading |
@@ -76,7 +77,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest httpx
 DATA_DIR=./data .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-Auth is optional basic auth. Without it, keep Hearth on your LAN or behind a reverse proxy with auth.
+Everyone signs in with their own account. The first visit asks you to create the owner account; owners add the rest of the household in **Settings → Accounts**. Passwords are stored as scrypt hashes; sessions last 90 days and end when the password changes. Tailscale users are signed in automatically, and the Android app uses its own device tokens.
 
 ## About
 Hearth is developed by **Alan Nicholas**.

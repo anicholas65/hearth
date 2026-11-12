@@ -699,3 +699,16 @@ dialog::backdrop{background:rgb(10 12 11 / .5);backdrop-filter:blur(3px)}
 @media (hover:hover){.swatch:hover{transform:translateY(-2px);box-shadow:var(--e2)}}
 .swatch:has(input:checked){box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 25%,transparent),var(--e2)}
 .swatch .chip{height:58px}
+
+/* sign-in pages */
+.auth-main{max-width:420px;padding-top:max(48px,8vh)}
+.auth-brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:22px;font:700 26px/1 var(--font);color:var(--fg)}
+.auth-brand img{border-radius:14px}
+.auth-card .card-b{padding:24px 22px 22px}
+.auth-card h1{font-size:var(--fs-h1);margin:0 0 14px}
+.auth-card button.wide{width:100%;margin-top:4px}
+.auth-err{margin:0 0 14px;padding:10px 12px;border-radius:9px;background:var(--bad-soft);color:var(--bad);font-weight:600;font-size:14px}
+.auth-foot{text-align:center;margin-top:18px}
+.foot .linkbtn{font-size:inherit;padding:0 2px;color:var(--muted);text-decoration:underline}
+.acct-me{padding:10px 0 12px;border-bottom:1px solid var(--line)}
+.acct-edit{margin-top:4px}

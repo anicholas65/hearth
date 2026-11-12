@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.0
+- **Sign-in**: per-user accounts with a sign-in page. The first visit creates the owner account; owners add,
+  reset and remove household accounts in Settings → Accounts; everyone can change their own password and
+  sign out. scrypt password hashes, hashed session tokens, sign-in throttling. `HEARTH_USERNAME`/`HEARTH_PASSWORD`
+  now pre-create the owner account; `HEARTH_AUTH=off` disables sign-in. Migration v3 (reversible).
+- Money is now called Budget in the menu.
+
 ## 3.0.0 (prototype)
 - REST API v1 for the Android client: sync change feed, idempotent LWW upserts, soft deletes, files, device
   pairing and tokens; OpenAPI in `docs/openapi.json`. Reversible migrations with automatic backups.

@@ -1,0 +1,12 @@
+{% extends "_auth.html" %}{% block title %}Welcome{% endblock %}{% block content %}
+<h1>Create your account</h1>
+<p class="muted" style="margin:4px 0 16px">Hearth now asks everyone to sign in. You'll be the owner and can add the rest of the household in Settings.</p>
+{% if error %}<p class="auth-err" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/welcome" class="stack">
+<label>Your name<input name="name" value="{{ form.name or '' }}" autocomplete="name" placeholder="Alan"></label>
+<label>Username<input name="username" value="{{ form.username or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+<label>Password <span class="hint">at least {{ min }} characters</span><input type="password" name="password" autocomplete="new-password" minlength="{{ min }}" required></label>
+<label>Confirm password<input type="password" name="confirm" autocomplete="new-password" minlength="{{ min }}" required></label>
+<button class="wide">Create account &amp; sign in</button>
+</form>
+{% endblock %}

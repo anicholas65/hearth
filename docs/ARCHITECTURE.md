@@ -25,7 +25,7 @@
 Migrations: `db.MIGRATIONS` = list of additive `ALTER TABLE ADD COLUMN`, applied idempotently at startup. No down-migrations, no automatic backup before migrating.
 
 ## Auth
-Optional HTTP Basic auth for every page (`HEARTH_USERNAME`/`HEARTH_PASSWORD`), `/api/health` exempt. No users, no tokens, no API.
+Per-user accounts (`app/auth.py`): `members.password_hash` (scrypt) + `sessions` (cookie token stored as SHA-256, 90-day sliding expiry). First visit with no accounts → `/welcome` creates the owner. Tailscale identity signs in automatically; HTTP Basic against an account still works for scripts; `/api/v1` uses device tokens. `HEARTH_AUTH=off` or demo mode disables sign-in.
 
 ## Routes (pages)
 Home `/` · Plan `/tasks`, `/schedule` · Organize `/items`, `/shopping`, `/documents`, `/gallery`, `/contractors` · Finances `/budget`, `/budget?view=forecast` · `/search` · `/settings`. JSON only at `/api/health`.

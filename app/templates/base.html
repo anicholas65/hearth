@@ -28,7 +28,7 @@
 </header>
 {% if demo %}<div class="demo-banner" role="note">Demo mode: sample data only. Your real Hearth data isn't loaded or changed.</div>{% endif %}
 <main id="main">{% block content %}{% endblock %}</main>
-<footer class="foot">Hearth v{{ about.version }} · Developed by <a href="/settings#about">{{ about.developer }}</a></footer>
+<footer class="foot">{% if member %}<span>Signed in as <a href="/settings#accounts">{{ member.name or member.login }}</a>{% if signed_via == 'session' %} · <form method="post" action="/logout" class="inline"><button class="linkbtn">Sign out</button></form>{% endif %}</span><br>{% endif %}Hearth v{{ about.version }} · Developed by <a href="/settings#about">{{ about.developer }}</a></footer>
 
 <nav class="tabbar" aria-label="Main">
 {% for key in ['home', 'plan'] %}{% set label, icon, pages = sections[key] %}<a href="{{ pages[0][0] if pages else '/' }}" class="{{ 'on' if section == key }}">{{ i(icon) }}{{ label }}{% if key == 'plan' and nav_counts.overdue %}<span class="cnt bad">{{ nav_counts.overdue }}</span>{% endif %}</a>{% endfor %}

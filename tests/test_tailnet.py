@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 TS = {"Tailscale-User-Login": "alan@example.com", "Tailscale-User-Name": "Alan Nicholas"}
 
 
+pytestmark = pytest.mark.auth
+
+
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
@@ -18,7 +21,7 @@ def app(tmp_path, monkeypatch):
 def members():
     from app.db import get_db
     with get_db() as db:
-        return [dict(r) for r in db.execute("SELECT login, name, role FROM members")]
+        return [dict(r) for r in db.execute("SELECT login, name, role FROM members WHERE login LIKE '%@%'")]
 
 
 def test_headers_from_lan_are_stripped(app):
@@ -30,7 +33,10 @@ def test_headers_from_lan_are_stripped(app):
         assert members() == []  # header never reached the app
 
 
-def test_headers_from_loopback_sign_in(app):
+def test_headers_from_loopback_sign_in(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTIFY_DISABLED", "1")
+    from app.main import app
     with TestClient(app, client=("127.0.0.1", 50000)) as c:
         r = c.get("/", headers=TS)
         assert r.status_code == 200 and "Alan Nicholas" in c.get("/settings", headers=TS).text

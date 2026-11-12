@@ -10,5 +10,5 @@ services:
     environment:
       TZ: ${TZ:-America/New_York}
       APPRISE_URLS: ${APPRISE_URLS:-}
-      # HEARTH_USERNAME / HEARTH_PASSWORD enable basic auth on the LAN port
+      # HEARTH_USERNAME / HEARTH_PASSWORD optionally pre-create the owner account (else Hearth asks on first visit)
     restart: unless-stopped

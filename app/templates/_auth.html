@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}" data-mode="{{ mode }}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{% block title %}Sign in{% endblock %} · Hearth</title>
+<meta name="theme-color" content="{{ theme_color[0] if mode == 'light' else theme_color[1] }}">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/static/style.css?v={{ about.version }}">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/static/manifest.webmanifest">
+</head><body class="auth">
+<main id="main" class="auth-main">
+<div class="auth-brand"><img src="/static/brand/hearth-icon.svg" alt="" width="56" height="56"><span>Hearth</span></div>
+<section class="card auth-card"><div class="card-b">{% block content %}{% endblock %}</div></section>
+<p class="muted small auth-foot">Hearth v{{ about.version }} · Developed by {{ about.developer }}</p>
+</main></body></html>

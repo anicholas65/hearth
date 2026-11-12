@@ -1,0 +1,32 @@
+{% from "_macros.html" import i, head %}{% set A = accounts %}
+{% set badge %}{% if A.enabled %}<span class="badge ok">{{ i('shield') }} Sign-in on</span>{% else %}<span class="badge warn">Sign-in off</span>{% endif %}{% endset %}
+<section class="card accent" id="accounts">{{ head('Accounts', 'users', badge) }}<div class="card-b">
+{% if amsg %}<p class="ok" role="status" style="margin-top:0">{{ amsg }}</p>{% endif %}
+{% if aerr %}<p class="auth-err" role="alert">{{ aerr }}</p>{% endif %}
+{% if not A.enabled %}<p class="muted" style="margin-top:0">Sign-in is turned off (<code>HEARTH_AUTH=off</code> or demo mode). Anyone who can reach Hearth can use it.</p>{% endif %}
+{% if A.me %}<div class="row acct-me"><div class="dot acc">{{ i('users') }}</div><div class="grow"><b>{{ A.me.name or A.me.login }}</b><small>signed in as {{ A.me.login }}{{ ' · owner' if A.me.role == 'owner' }}{{ ' · via Tailscale' if signed_via == 'tailnet' }}</small></div>
+{% if signed_via == 'session' %}<form method="post" action="/logout"><button class="ghost sm">{{ i('door') }} Sign out</button></form>{% endif %}</div>{% endif %}
+<div class="split" style="gap:18px;margin-top:12px">
+<div>
+<h2 style="margin-bottom:8px">{{ i('users') }} Household</h2>
+{% if A.list %}<div class="list">{% for m in A.list %}{% set me = A.me and A.me.id == m.id %}<div class="row"><div class="dot {{ 'acc' if m.role == 'owner' }}">{{ i('shield' if m.role == 'owner' else 'users') }}</div>
+<div class="grow"><b>{{ m.name or m.login }}{% if me %} <span class="badge acc">you</span>{% endif %}</b><small>{{ m.login }}{{ ' · owner' if m.role == 'owner' }}{{ ' · Tailscale only' if not m.has_password }}{% if m.last_seen_at %} · last seen {{ m.last_seen_at[:10]|nicedate }}{% endif %}</small>
+{% if me or A.can_manage %}<details class="more acct-edit"><summary>{{ 'Change password' if me else ('Reset password' if m.has_password else 'Set a password') }}</summary>
+<form method="post" action="/settings/accounts/{{ m.id }}/password" class="stack">
+{% if me and m.has_password %}<label>Current password<input type="password" name="current" autocomplete="current-password" required></label>{% endif %}
+<label>New password <span class="hint">at least {{ A.min }} characters{{ '; signs them out everywhere' if not me }}</span><input type="password" name="password" autocomplete="new-password" minlength="{{ A.min }}" required></label>
+<div class="actions"><button class="sm">Save password</button></div></form>
+{% if A.can_manage and not me %}<form method="post" action="/settings/accounts/{{ m.id }}/delete" onsubmit="return confirm('Remove {{ (m.name or m.login)|e }}? They will be signed out.')" style="margin-top:10px"><button class="danger sm">{{ i('trash') }} Remove account</button></form>{% endif %}
+</details>{% endif %}
+</div></div>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0">No accounts yet.</p>{% endif %}
+</div>
+{% if A.can_manage %}<form method="post" action="/settings/accounts" class="stack">
+<h2>{{ i('plus') }} Add someone</h2>
+<label>Name<input name="name" placeholder="Sam" autocomplete="off"></label>
+<label>Username <span class="hint">what they type to sign in</span><input name="username" required autocapitalize="none" spellcheck="false" autocomplete="off"></label>
+<label>Password <span class="hint">at least {{ A.min }} characters; they can change it later</span><input type="password" name="password" minlength="{{ A.min }}" required autocomplete="new-password"></label>
+<label class="chk"><input type="checkbox" name="role" value="owner"> Owner (can manage accounts)</label>
+<div class="actions"><button>{{ i('plus') }} Add account</button></div>
+</form>{% endif %}
+</div></div></section>

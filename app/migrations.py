@@ -231,7 +231,24 @@ def v2_down(db):
     _rebuild_shopping(db, check=True)
 
 
-MIGRATIONS = [(1, v1_up, v1_down), (2, v2_up, v2_down)]
+# ---------------- v3: web sign-in (passwords on members, sessions) ----------------
+
+def v3_up(db):
+    if "password_hash" not in _cols(db, "members"):
+        db.execute("ALTER TABLE members ADD COLUMN password_hash TEXT")
+    db.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, "
+               "member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, created_at TEXT NOT NULL, "
+               "last_seen_at TEXT NOT NULL, expires_at TEXT NOT NULL, user_agent TEXT)")
+    db.execute("CREATE INDEX IF NOT EXISTS ix_sessions_member ON sessions(member_id)")
+
+
+def v3_down(db):
+    db.execute("DROP TABLE IF EXISTS sessions")
+    if "password_hash" in _cols(db, "members"):
+        db.execute("ALTER TABLE members DROP COLUMN password_hash")
+
+
+MIGRATIONS = [(1, v1_up, v1_down), (2, v2_up, v2_down), (3, v3_up, v3_down)]
 LATEST = MIGRATIONS[-1][0]
 
 

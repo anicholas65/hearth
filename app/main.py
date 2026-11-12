@@ -7,14 +7,14 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import DEVELOPER, REPO_URL, __version__, backup, finance, gcal, home, media, notify, plan, shopping
+from . import DEVELOPER, REPO_URL, __version__, auth, backup, finance, gcal, home, media, notify, plan, shopping
 from . import search as search_mod
 from .db import data_dir, get_db, get_setting, init_db, set_setting
 
@@ -91,6 +91,7 @@ DEFAULT_TASKS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    auth.bootstrap_from_env()
     from .db import demo_mode
     if demo_mode():
         from .demo import seed_if_empty
@@ -110,20 +111,29 @@ app = FastAPI(title="Hearth", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    user, pw = os.environ.get("HEARTH_USERNAME"), os.environ.get("HEARTH_PASSWORD")
+async def sign_in(request: Request, call_next):
+    """Web sign-in (see app/auth.py). /api/v1 has its own device tokens."""
+    path = request.url.path
     if request.scope.get("hearth_member"):  # signed in via Tailscale identity (trusted loopback proxy)
+        request.scope["hearth_via"] = "tailnet"
         return await call_next(request)
-    if not (user and pw) or request.url.path.startswith("/api/"):  # /api/v1 uses device tokens
+    if not auth.enabled() or path.startswith("/api/"):
         return await call_next(request)
-    try:
-        scheme, _, cred = request.headers.get("authorization", "").partition(" ")
-        u, _, p = base64.b64decode(cred).decode().partition(":")
-        ok = scheme.lower() == "basic" and secrets.compare_digest(u, user) and secrets.compare_digest(p, pw)
-    except Exception:
-        ok = False
-    if ok:
+    m = auth.member_for_session(request.cookies.get(auth.COOKIE))
+    via = "session"
+    if not m and request.headers.get("authorization"):
+        m, via = auth.member_for_basic(request.headers.get("authorization")), "basic"
+    if m:
+        request.scope["hearth_member"], request.scope["hearth_via"] = m, via
         return await call_next(request)
+    if auth.is_public(path):
+        return await call_next(request)
+    wants_html = request.method == "GET" and "text/html" in request.headers.get("accept", "") \
+        and request.headers.get("x-requested-with") != "fetch"
+    if wants_html:
+        full = path + (f"?{request.url.query}" if request.url.query else "")
+        dest = "/login?" + urlencode({"next": full}) if auth.has_accounts() else "/welcome"
+        return RedirectResponse(dest if full != "/" or dest == "/welcome" else "/login", status_code=303)
     return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Hearth"'})
 
 
@@ -220,6 +230,7 @@ def render(request: Request, name: str, **ctx):
                     "favicon": "/static/favicon.svg" if v2 else "/static/icon.png"}
     ctx["msg"] = request.query_params.get("msg")
     ctx["member"] = request.scope.get("hearth_member")
+    ctx["signed_via"] = request.scope.get("hearth_via")
     from .db import demo_mode
     ctx["demo"] = demo_mode()
     ctx["section"] = section_for(request.url.path)
@@ -1766,20 +1777,168 @@ def settings_page(request: Request, sent: str | None = None, g: str | None = Non
     return render(request, "settings.html", targets=len(notify.apprise_urls()), sent=sent,
                   lead=os.environ.get("NOTIFY_LEAD_DAYS", "3"), data=str(data_dir()),
                   google=google, g=g, gmsg=gmsg, imp=imp, imsg=imsg,
-                  expense_categories=finance.expense_categories(), remote=_remote_ctx(request))
+                  expense_categories=finance.expense_categories(), remote=_remote_ctx(request),
+                  accounts=_accounts_ctx(request), amsg=request.query_params.get("amsg"),
+                  aerr=request.query_params.get("aerr"))
+
+
+def _accounts_ctx(request: Request) -> dict:
+    me = request.scope.get("hearth_member")
+    return dict(enabled=auth.enabled(), me=me, can_manage=(me is None) or me.get("role") == "owner",
+                list=auth.list_accounts(), min=auth.MIN_PASSWORD)
 
 
 def _remote_ctx(request: Request) -> dict:
     from . import tailnet
     from .api import list_devices, notify_config
     with get_db() as db:
-        members = [dict(r) for r in db.execute("SELECT * FROM members ORDER BY created_at")]
+        members = [dict(r) for r in db.execute("SELECT login, name, role FROM members ORDER BY created_at")]
     peer = request.client.host if request.client else None
     secure = request.url.scheme == "https" or (tailnet.is_loopback(peer) and
                                                request.headers.get("x-forwarded-proto") == "https")
     return dict(ts=tailnet.status(), devices=list_devices(), members=members, server=server_url(request),
-                https=secure, via_tailnet=bool(request.scope.get("hearth_member")),
+                https=secure, via_tailnet=request.scope.get("hearth_via") == "tailnet",
                 public_url=get_setting("public_url") or "", notify=notify_config())
+
+
+# ---------------- sign-in ----------------
+
+def _auth_page(request: Request, name: str, **ctx):
+    t, m = request.cookies.get("theme"), request.cookies.get("mode")
+    ctx.update(theme=t if t in THEMES else "hearth", mode=m if m in MODES else "dark",
+               about={"version": __version__, "developer": DEVELOPER, "repo": REPO_URL})
+    ctx["theme_color"] = THEME_COLOR[ctx["theme"]]
+    return templates.TemplateResponse(request, name, ctx)
+
+
+def _signed_in(request: Request, member: dict, dest: str) -> RedirectResponse:
+    token = auth.start_session(member["id"], request.headers.get("user-agent"))
+    r = back(auth.safe_next(dest))
+    r.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                 secure=request.url.scheme == "https", path="/")
+    return r
+
+
+def _ip(request: Request) -> str:
+    return request.client.host if request.client else "?"
+
+
+@app.get("/login", include_in_schema=False)
+def login_page(request: Request, next: str = "/"):
+    if not auth.enabled() or request.scope.get("hearth_member"):
+        return back(auth.safe_next(next))
+    if not auth.has_accounts():
+        return back("/welcome")
+    return _auth_page(request, "login.html", next=auth.safe_next(next), error=None, username="")
+
+
+@app.post("/login", include_in_schema=False)
+def login_submit(request: Request, username: str = Form(""), password: str = Form(""), next: str = Form("/")):
+    ip = _ip(request)
+    if auth.throttled(ip):
+        r = _auth_page(request, "login.html", next=auth.safe_next(next), username=username,
+                       error="Too many attempts. Wait 15 minutes and try again.")
+        r.status_code = 429
+        return r
+    m = auth.authenticate(username, password)
+    if not m:
+        auth.record_failure(ip)
+        r = _auth_page(request, "login.html", next=auth.safe_next(next), username=username,
+                       error="That username and password don't match.")
+        r.status_code = 401
+        return r
+    auth.clear_failures(ip)
+    return _signed_in(request, m, next)
+
+
+@app.get("/welcome", include_in_schema=False)
+def welcome_page(request: Request):
+    if not auth.enabled() or auth.has_accounts():
+        return back("/")
+    return _auth_page(request, "welcome.html", error=None, form={}, min=auth.MIN_PASSWORD)
+
+
+@app.post("/welcome", include_in_schema=False)
+def welcome_submit(request: Request, name: str = Form(""), username: str = Form(""),
+                   password: str = Form(""), confirm: str = Form("")):
+    if not auth.enabled() or auth.has_accounts():  # only the very first account is created here
+        return back("/login")
+    form = {"name": name, "username": username}
+    err = "The passwords don't match." if password != confirm else None
+    try:
+        if err:
+            raise ValueError(err)
+        m = auth.create_account(username, password, name=name, role="owner")
+    except ValueError as e:
+        r = _auth_page(request, "welcome.html", error=str(e), form=form, min=auth.MIN_PASSWORD)
+        r.status_code = 400
+        return r
+    return _signed_in(request, m, "/")
+
+
+@app.post("/logout", include_in_schema=False)
+def logout(request: Request):
+    auth.end_session(request.cookies.get(auth.COOKIE))
+    r = back("/login" if auth.enabled() and auth.has_accounts() else "/")
+    r.delete_cookie(auth.COOKIE, path="/")
+    return r
+
+
+def _need_owner(request: Request) -> dict | None:
+    me = request.scope.get("hearth_member")
+    if me is not None and me.get("role") != "owner":
+        raise HTTPException(403, "Only an owner can manage accounts.")
+    return me
+
+
+def _acct_back(msg: str | None = None, err: str | None = None) -> RedirectResponse:
+    q = urlencode({k: v for k, v in (("amsg", msg), ("aerr", err)) if v})
+    return back(f"/settings{'?' + q if q else ''}#accounts")
+
+
+@app.post("/settings/accounts", include_in_schema=False)
+def account_add(request: Request, name: str = Form(""), username: str = Form(""), password: str = Form(""),
+                role: str = Form("member")):
+    _need_owner(request)
+    try:
+        m = auth.create_account(username, password, name=name, role=role)
+    except ValueError as e:
+        return _acct_back(err=str(e))
+    return _acct_back(msg=f"Added {m['name']}. They can sign in as “{m['login']}”.")
+
+
+@app.post("/settings/accounts/{member_id}/password", include_in_schema=False)
+def account_password(request: Request, member_id: int, password: str = Form(""), current: str = Form(None)):
+    me = request.scope.get("hearth_member")
+    target = auth.get_member(member_id)
+    if not target:
+        raise HTTPException(404, "No such account")
+    own = me is not None and me["id"] == member_id
+    if not own:
+        _need_owner(request)
+    elif target["password_hash"] and not auth.verify_password(current or "", target["password_hash"]):
+        return _acct_back(err="Your current password is wrong.")
+    try:
+        auth.set_password(member_id, password)
+    except ValueError as e:
+        return _acct_back(err=str(e))
+    if own and request.scope.get("hearth_via") == "session":  # changing it signs out everywhere; keep this one
+        return _signed_in(request, target, "/settings?amsg=Password+changed.#accounts")
+    return _acct_back(msg=f"Password {'changed' if own else 'set for ' + (target['name'] or target['login'])}.")
+
+
+@app.post("/settings/accounts/{member_id}/delete", include_in_schema=False)
+def account_delete(request: Request, member_id: int):
+    me = _need_owner(request)
+    target = auth.get_member(member_id)
+    if not target:
+        raise HTTPException(404, "No such account")
+    if me is not None and me["id"] == member_id:
+        return _acct_back(err="You can't remove your own account.")
+    if target["role"] == "owner" and auth.owner_count() <= 1:
+        return _acct_back(err="Keep at least one owner.")
+    auth.delete_account(member_id)
+    return _acct_back(msg=f"Removed {target['name'] or target['login']}.")
 
 
 @app.post("/settings/test")

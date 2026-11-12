@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import i, head %}
 {% block title %}Settings{% endblock %}{% block content %}
 <div class="page-head"><div><h1>Settings</h1></div></div>
+{% include "_accounts.html" %}
 <section class="card accent" id="theme">{{ head('Appearance', 'palette') }}<div class="card-b">
 <form method="post" action="/theme" id="themeform">
 <div class="swatches" style="margin-bottom:16px">{% for key, (label, hues) in themes.items() %}
@@ -65,7 +66,6 @@
 {% if not d.revoked_at %}<form method="post" action="/settings/devices/{{ d.id }}/revoke" onsubmit="return confirm('Revoke {{ d.name }}? It will need to pair again.')"><button class="danger sm">Revoke</button></form>{% endif %}</div>{% endfor %}</div>
 {% else %}<p class="muted" style="margin:0 0 10px">No devices yet.</p>{% endif %}
 <form method="post" action="/settings/pair" style="margin-top:10px"><button>{{ i('plus') }} Pair a device</button></form>
-{% if remote.members %}<h2 style="margin:18px 0 8px">{{ i('users') }} Household (Tailscale sign-in)</h2><div class="chips">{% for m in remote.members %}<span class="chip">{{ m.name }} <span class="muted small">{{ m.login }}{{ ' · owner' if m.role == 'owner' }}</span></span>{% endfor %}</div>{% endif %}
 </div>
 <form method="post" action="/settings/remote" class="stack">
 <h2>{{ i('sliders') }} Addresses &amp; push</h2>

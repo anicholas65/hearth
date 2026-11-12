@@ -40,8 +40,7 @@ where Serve connects from in both setups. On any other connection, including LAN
 reason Uvicorn runs without `--proxy-headers`: the peer address can't be faked with `X-Forwarded-For`.
 Don't put another reverse proxy in front of Hearth on the same host without revisiting this.
 
-The LAN address keeps its existing behaviour (open, or basic auth if `HEARTH_USERNAME`/`HEARTH_PASSWORD`
-are set).
+The LAN address asks for a Hearth account sign-in (unless `HEARTH_AUTH=off`).
 
 ## Pairing the Android app
 Settings → **Remote access & devices** → **Pair a device** shows a QR code containing
