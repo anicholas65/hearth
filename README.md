@@ -5,9 +5,9 @@ Self-hosted home manager for Unraid: maintenance reminders, home inventory, phot
 ## What's new in 3.0 (prototype)
 - **REST API** at `/api/v1` for the Android client: device pairing, sync change feed, idempotent upserts, files. Contract: `docs/openapi.json`.
 - **Tailscale** remote access with HTTPS and tailnet sign-in (`docs/TAILSCALE.md`), installable **PWA** with an offline shopping list.
-- **Today · Plan · Stuff · Money**, staggered maintenance with Rebalance, freshness bars, command palette (`/`), swipe gestures.
+- **Today · Plan · Stuff · Budget**, staggered maintenance with Rebalance, freshness bars, command palette (`/`), swipe gestures.
 - **Capture**: barcode lookup, label and receipt reading (in-browser, or Claude with `ANTHROPIC_API_KEY`).
-- **Money**: sinking funds, cost of ownership, insurance claim packet PDF. **Pantry**, **Vehicles**, **Projects & Hobbies**.
+- **Budget**: sinking funds, cost of ownership, insurance claim packet PDF. **Pantry**, **Vehicles**, **Projects & Hobbies**.
 - `HEARTH_DEMO=1` runs on sample data in `/data/demo`. Details: `docs/PROTOTYPE_REPORT.md`.
 
 ## What's new in 2.1

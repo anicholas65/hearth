@@ -133,7 +133,7 @@ def test_palette_runs_actions(client):
 
 def test_nav_today_plan_stuff_money_and_dark_default(client):
     html = client.get("/").text
-    for label in (">Today<", ">Plan", ">Stuff<", ">Money<"):
+    for label in (">Today<", ">Plan", ">Stuff<", ">Budget<"):
         assert label in html, label
     assert 'data-mode="dark"' in html
     client.cookies.set("mode", "light")

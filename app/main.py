@@ -184,7 +184,7 @@ SECTIONS = {  # primary nav: key -> (label, icon, [(path, label, icon)])
     "organize": ("Stuff", "box", [("/items", "Inventory", "box"), ("/documents", "Documents", "file"),
                                   ("/gallery", "Photos", "images"), ("/contractors", "Contractors", "users"),
                                   ("/vehicles", "Vehicles", "car"), ("/projects", "Hobbies", "star")]),
-    "finances": ("Money", "wallet", [("/budget", "Budget", "wallet"), ("/funds", "Funds", "banknote"),
+    "finances": ("Budget", "wallet", [("/budget", "Budget", "wallet"), ("/funds", "Funds", "banknote"),
                                      ("/budget?view=forecast", "Forecast", "chart")]),
 }
 
