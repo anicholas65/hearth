@@ -15,7 +15,10 @@
 | `plan.py` | recurrence presets/labels, item & expense categories |
 | `finance.py` | ledger (fund entries + task-log costs), budget/balance maths, replacement forecast |
 | `shopping.py` | quick-add parsing, aisle categorisation |
-| `search.py` | universal LIKE search across tables |
+| `search.py` | FTS5 index (`search_fts`, rebuilt when triggers mark `search_state` dirty), query parser, field filters, sort |
+| `fields.py` | field catalogue per record kind (shared by search filters and formulas), custom fields/values, formula ordering |
+| `formula.py` | safe spreadsheet-style formula evaluator (AST whitelist, no eval) |
+| `auth.py` | accounts, password hashing, sessions |
 | `notify.py` | Apprise digest loop (tasks, appointments, warranties) |
 | `gcal.py` | one-way Google Calendar sync via service account |
 | `backup.py` | backup zip (sqlite backup API), CSV export, item CSV import |

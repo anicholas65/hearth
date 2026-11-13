@@ -68,6 +68,8 @@ def _due_label(v: str) -> str:
 
 
 templates.env.filters["duein"] = _due_label
+from . import fields as _FD  # noqa: E402
+templates.env.globals["custom_fields_for"] = _FD.detail_ctx
 templates.env.filters["n"] = lambda v: "" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
 
 DEFAULT_TASKS = [
@@ -436,10 +438,12 @@ def item_manual_url(item_id: int, url: str = Form(...)):
 
 
 @app.get("/search")
-def search_page(request: Request, q: str = ""):
-    groups = search_mod.search(q)
-    return render(request, "search.html", q=q, groups=groups,
-                  total=sum(len(g["rows"]) for g in groups))
+def search_page(request: Request, q: str = "", more: str = ""):
+    res = search_mod.search_full(q, limit=200 if more else 8)
+    from . import fields as FD
+    field_help = {FD.KINDS[k]["label"]: FD.catalog(k) for k in ("items", "vehicles", "projects", "tasks")}
+    return render(request, "search.html", q=q, groups=res["groups"], total=res["total"], filters=res["filters"],
+                  errors=res["errors"], sort=res["sort"], more=more, field_help=field_help)
 
 
 # ---------- tasks ----------
@@ -1789,6 +1793,121 @@ def _remote_ctx(request: Request) -> dict:
     return dict(ts=tailnet.status(), devices=list_devices(), members=members, server=server_url(request),
                 https=secure, via_tailnet=request.scope.get("hearth_via") == "tailnet",
                 public_url=get_setting("public_url") or "", notify=notify_config())
+
+
+# ---------------- custom fields & formulas ----------------
+
+FIELD_EXAMPLES = {
+    "items": [("Cost per year", "money", "(price + upkeep) / max(age, 1)"),
+              ("Save per month to replace", "money", "replace_cost / (life * 12)"),
+              ("Life used", "percent", "min(age / life * 100, 100)"),
+              ("Warranty status", "text",
+               'if(warranty_days < 0, "Expired", if(warranty_days < 90, "Ending soon", "Covered"))')],
+    "vehicles": [("Cost per year", "money", "spent / max(age, 1)"),
+                 ("Miles per year", "number", "miles / max(age, 1)"),
+                 ("Total cost per mile", "money", "(price + spent) / miles")],
+    "projects": [("Budget used", "percent", "spent / budget * 100"),
+                 ("Over budget by", "money", "max(spent - budget, 0)"),
+                 ("Still to buy", "money", "max(planned - spent, 0)")],
+}
+
+
+def _kind_or_404(kind: str) -> str:
+    from . import fields as FD
+    if kind not in FD.CUSTOM_KINDS:
+        raise HTTPException(404, "Custom fields work on inventory, vehicles and projects")
+    return kind
+
+
+@app.get("/fields")
+def fields_index():
+    return back("/fields/items")
+
+
+@app.get("/fields/{kind}")
+def fields_page(request: Request, kind: str, fmsg: str | None = None, ferr: str | None = None):
+    from . import fields as FD
+    from .formula import FUNC_HELP
+    _kind_or_404(kind)
+    fields = FD.custom_fields(kind)
+    have = {f["formula"] for f in fields}
+    examples = [dict(label=lbl, format=fmt, formula=src, added=src in have) for lbl, fmt, src in FIELD_EXAMPLES[kind]]
+    return render(request, "fields.html", kind=kind, K=FD.KINDS[kind], KINDS=FD.KINDS, kinds=FD.CUSTOM_KINDS,
+                  fields=fields, cat=FD.catalog(kind), examples=examples, FORMATS=FD.FORMATS,
+                  INPUT_TYPES=FD.INPUT_TYPES, FUNC_HELP=FUNC_HELP, msg=fmsg, err=ferr)
+
+
+def _fields_back(kind: str, msg: str | None = None, err: str | None = None, anchor: str = "") -> RedirectResponse:
+    q = urlencode({k: v for k, v in (("fmsg", msg), ("ferr", err)) if v})
+    return back(f"/fields/{kind}{'?' + q if q else ''}{anchor}")
+
+
+@app.get("/fields/{kind}/preview")
+def fields_preview(kind: str, formula: str = "", format: str = "number", key: str = ""):
+    from . import fields as FD
+    _kind_or_404(kind)
+    return FD.preview(kind, formula, format, key or None)
+
+
+@app.post("/fields/{kind}")
+def fields_add(kind: str, label: str = Form(""), type: str = Form("formula"), format: str = Form("number"),
+               formula: str = Form("")):
+    from . import fields as FD
+    from .formula import FormulaError
+    _kind_or_404(kind)
+    try:
+        f = FD.add_field(kind, label, type, format, formula.strip().lstrip("=").strip())
+    except (ValueError, FormulaError) as e:
+        return _fields_back(kind, err=str(e), anchor="#new")
+    return _fields_back(kind, msg=f"Added “{f['label']}”. Use it as {f['key']} in search and formulas.")
+
+
+@app.post("/fields/edit/{fid}")
+def fields_edit(fid: int, label: str = Form(""), format: str = Form(None), formula: str = Form(None)):
+    from . import fields as FD
+    from .formula import FormulaError
+    f = FD.get_field(fid)
+    if not f:
+        raise HTTPException(404, "No such field")
+    try:
+        FD.update_field(fid, label, format, (formula or "").strip().lstrip("=").strip() if formula is not None else None)
+    except (ValueError, FormulaError) as e:
+        return _fields_back(f["entity"], err=f"{f['label']}: {e}")
+    return _fields_back(f["entity"], msg="Saved.")
+
+
+@app.post("/fields/delete/{fid}")
+def fields_delete(fid: int):
+    from . import fields as FD
+    f = FD.get_field(fid)
+    if not f:
+        raise HTTPException(404, "No such field")
+    try:
+        FD.delete_field(fid)
+    except ValueError as e:
+        return _fields_back(f["entity"], err=str(e))
+    return _fields_back(f["entity"], msg=f"Deleted “{f['label']}”.")
+
+
+@app.post("/fields/move/{fid}")
+def fields_move(fid: int, d: int = 1):
+    from . import fields as FD
+    f = FD.get_field(fid)
+    if not f:
+        raise HTTPException(404, "No such field")
+    FD.move_field(fid, -1 if d < 0 else 1)
+    return _fields_back(f["entity"])
+
+
+@app.post("/fields/{kind}/{record_id}/values")
+async def fields_values(request: Request, kind: str, record_id: int):
+    from . import fields as FD
+    _kind_or_404(kind)
+    form = await request.form()
+    errors = FD.set_values(kind, record_id, {k: str(v) for k, v in form.items()})
+    dest = {"items": f"/items/{record_id}", "vehicles": f"/vehicles/{record_id}",
+            "projects": f"/projects/{record_id}"}[kind]
+    return back(toast_url(dest, errors[0] if errors else "Saved") + "#custom")
 
 
 # ---------------- sign-in ----------------

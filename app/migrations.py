@@ -248,7 +248,45 @@ def v3_down(db):
         db.execute("ALTER TABLE members DROP COLUMN password_hash")
 
 
-MIGRATIONS = [(1, v1_up, v1_down), (2, v2_up, v2_down), (3, v3_up, v3_down)]
+# ---------------- v4: custom fields & formulas, full-text search index ----------------
+
+SEARCH_SOURCES = ["items", "rooms", "tasks", "appointments", "documents", "contractors", "shopping_items",
+                  "pantry_items", "photos", "fund_entries", "vehicles", "projects", "custom_values", "custom_fields"]
+
+
+def v4_up(db):
+    db.execute("CREATE TABLE IF NOT EXISTS custom_fields (id INTEGER PRIMARY KEY, entity TEXT NOT NULL, "
+               "key TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN "
+               "('number','money','text','date','formula')), format TEXT NOT NULL DEFAULT 'number', formula TEXT, "
+               "position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE (entity, key))")
+    db.execute("CREATE TABLE IF NOT EXISTS custom_values (field_id INTEGER NOT NULL REFERENCES custom_fields(id) "
+               "ON DELETE CASCADE, entity TEXT NOT NULL, record_id INTEGER NOT NULL, value TEXT, "
+               "PRIMARY KEY (field_id, record_id))")
+    db.execute("CREATE INDEX IF NOT EXISTS ix_custom_values_rec ON custom_values(entity, record_id)")
+    for entity in ("items", "vehicles", "projects"):  # values go when their record goes
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS trg_cv_{entity}_del AFTER DELETE ON {entity} BEGIN "
+                   f"DELETE FROM custom_values WHERE entity='{entity}' AND record_id=old.id; END")
+    db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(kind UNINDEXED, ref_id UNINDEXED, "
+               "title, body, tokenize='unicode61 remove_diacritics 2', prefix='2 3')")
+    db.execute("CREATE TABLE IF NOT EXISTS search_state (id INTEGER PRIMARY KEY CHECK (id = 1), dirty INTEGER NOT NULL)")
+    db.execute("INSERT OR REPLACE INTO search_state (id, dirty) VALUES (1, 1)")
+    for t in SEARCH_SOURCES:
+        for ev in ("INSERT", "UPDATE", "DELETE"):
+            db.execute(f"CREATE TRIGGER IF NOT EXISTS trg_search_{t}_{ev.lower()} AFTER {ev} ON {t} BEGIN "
+                       f"UPDATE search_state SET dirty = 1 WHERE id = 1 AND dirty = 0; END")
+
+
+def v4_down(db):
+    for t in SEARCH_SOURCES:
+        for ev in ("insert", "update", "delete"):
+            db.execute(f"DROP TRIGGER IF EXISTS trg_search_{t}_{ev}")
+    for entity in ("items", "vehicles", "projects"):
+        db.execute(f"DROP TRIGGER IF EXISTS trg_cv_{entity}_del")
+    for t in ("search_fts", "search_state", "custom_values", "custom_fields"):
+        db.execute(f"DROP TABLE IF EXISTS {t}")
+
+
+MIGRATIONS = [(1, v1_up, v1_down), (2, v2_up, v2_down), (3, v3_up, v3_down), (4, v4_up, v4_down)]
 LATEST = MIGRATIONS[-1][0]
 
 

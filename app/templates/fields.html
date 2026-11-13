@@ -1,0 +1,88 @@
+{% extends "base.html" %}{% from "_macros.html" import i, head %}
+{% block title %}Fields · {{ K.label }}{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Custom fields &amp; formulas</h1><p>Add your own fields to {{ K.label|lower }} records, and formulas that calculate from them, like a spreadsheet column. They show on each record and work in <a href="/search">search</a>.</p></div></div>
+<div class="chips" style="margin-bottom:16px" role="tablist">{% for k in kinds %}<a class="chip {{ 'on' if k == kind }}" href="/fields/{{ k }}"{% if k == kind %} aria-current="page"{% endif %}>{{ i(KINDS[k].icon) }} {{ KINDS[k].label }}</a>{% endfor %}</div>
+{% if msg %}<p class="ok" role="status">{{ msg }}</p>{% endif %}{% if err %}<p class="auth-err" role="alert">{{ err }}</p>{% endif %}
+<div class="split">
+<div>
+<section class="card">{{ head('Your fields', 'sliders', '<span class="badge">' ~ fields|length ~ '</span>') }}<div class="card-b">
+{% if fields %}<div class="list">{% for f in fields %}<div class="row cf-row"><div class="dot {{ 'acc' if f.kind == 'formula' }}">{% if f.kind == 'formula' %}<i class="fx">ƒx</i>{% else %}{{ i('pencil') }}{% endif %}</div>
+<div class="grow"><b>{{ f.label }}</b><small><code>{{ f.key }}</code> · {{ 'Formula → ' ~ FORMATS[f.format] if f.kind == 'formula' else INPUT_TYPES[f.kind] }}</small>
+{% if f.kind == 'formula' %}<code class="cf-src">= {{ f.formula }}</code>{% endif %}
+<details class="more"><summary>Edit</summary>
+<form method="post" action="/fields/edit/{{ f.id }}" class="stack" data-fx="{{ kind }}" data-key="{{ f.key }}">
+<label>Name<input name="label" value="{{ f.label }}" required></label>
+{% if f.kind == 'formula' %}<label>Formula<textarea name="formula" rows="2" class="fx-src" spellcheck="false" required>{{ f.formula }}</textarea></label>
+<label>Show as<select name="format">{% for k, v in FORMATS.items() %}<option value="{{ k }}" {{ 'selected' if k == f.format }}>{{ v }}</option>{% endfor %}</select></label>
+<div class="fx-preview muted small" aria-live="polite"></div>{% endif %}
+<div class="actions"><button class="sm">Save</button></div></form>
+<div class="actions" style="margin-top:8px">
+<form method="post" action="/fields/move/{{ f.id }}?d=-1"><button class="ghost sm" {{ 'disabled' if loop.first }} aria-label="Move up">↑</button></form>
+<form method="post" action="/fields/move/{{ f.id }}?d=1"><button class="ghost sm" {{ 'disabled' if loop.last }} aria-label="Move down">↓</button></form>
+<form method="post" action="/fields/delete/{{ f.id }}" onsubmit="return confirm('Delete “{{ f.label|e }}”? Values stored in it are deleted too.')"><button class="danger sm">{{ i('trash') }} Delete</button></form></div>
+</details></div></div>{% endfor %}</div>
+{% else %}<p class="muted" style="margin:0">No custom fields yet. Add one, or start from an example.</p>{% endif %}
+</div></section>
+{% if examples %}<section class="card">{{ head('Examples', 'star') }}<div class="card-b"><div class="list">
+{% for ex in examples %}<form method="post" action="/fields/{{ kind }}" class="row"><input type="hidden" name="label" value="{{ ex.label }}"><input type="hidden" name="type" value="formula"><input type="hidden" name="format" value="{{ ex.format }}"><input type="hidden" name="formula" value="{{ ex.formula }}">
+<div class="grow"><b>{{ ex.label }}</b><small><code>= {{ ex.formula }}</code></small></div><button class="ghost sm" {{ 'disabled' if ex.added }}>{{ 'Added' if ex.added else 'Add' }}</button></form>{% endfor %}
+</div></div></section>{% endif %}
+</div>
+<div>
+<section class="card accent" id="new">{{ head('Add a field', 'plus') }}<div class="card-b">
+<form method="post" action="/fields/{{ kind }}" class="stack" data-fx="{{ kind }}">
+<label>Name<input name="label" required placeholder="{{ 'Cost per year' if kind == 'items' else 'Miles per year' if kind == 'vehicles' else 'Hours spent' }}" maxlength="60"></label>
+<label>Type<select name="type" class="fx-type">{% for k, v in INPUT_TYPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}<option value="formula" selected>Formula (calculated)</option></select></label>
+<div class="fx-only stack">
+<label>Formula <span class="hint">e.g. <code>(price + upkeep) / max(age, 1)</code></span><textarea name="formula" rows="3" class="fx-src" spellcheck="false" placeholder="= price / life"></textarea></label>
+<div class="fx-preview muted small" aria-live="polite"></div>
+<label>Show as<select name="format">{% for k, v in FORMATS.items() %}<option value="{{ k }}" {{ 'selected' if k == 'money' }}>{{ v }}</option>{% endfor %}</select></label>
+</div>
+<div class="actions"><button>{{ i('plus') }} Add field</button></div>
+</form>
+<h2 style="margin:18px 0 6px;font-size:var(--fs-h3)">Fields you can use</h2>
+<div class="fx-names">{% for key, f in cat.items() %}<button type="button" class="chip sm" data-insert="{{ key }}" title="{{ f.label }}{{ ' = ' ~ f.formula if f.formula }}">{{ key }}</button>{% endfor %}</div>
+<h2 style="margin:16px 0 6px;font-size:var(--fs-h3)">Functions</h2>
+<table class="kv"><tbody>{% for sig, desc in FUNC_HELP.items() %}<tr><td><code>{{ sig }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
+<tr><td><code>+ - * / ^ %</code></td><td>math; dates: <code>warranty - today()</code> = days</td></tr>
+<tr><td><code>= &lt;&gt; &lt; &gt; and or not</code></td><td>comparisons and logic</td></tr></tbody></table>
+<p class="muted small">Blank inputs give a blank result. Dividing by zero gives a blank, not an error.</p>
+</div></section>
+</div></div>
+<script>
+(() => {
+  let last = null;
+  const toggle = f => { const t = f.querySelector('.fx-type'); if (t) f.querySelector('.fx-only').hidden = t.value !== 'formula'; };
+  document.querySelectorAll('form[data-fx]').forEach(f => {
+    const src = f.querySelector('.fx-src'), out = f.querySelector('.fx-preview'), fmt = f.querySelector('select[name=format]');
+    const t = f.querySelector('.fx-type'); if (t) { t.addEventListener('change', () => toggle(f)); toggle(f); }
+    if (!src) return;
+    src.addEventListener('focus', () => last = src);
+    let timer;
+    const run = () => { clearTimeout(timer); timer = setTimeout(async () => {
+      if (!src.value.trim()) { out.textContent = ''; return; }
+      const q = new URLSearchParams({formula: src.value, format: fmt ? fmt.value : 'number', key: f.dataset.key || ''});
+      try {
+        const r = await (await fetch(`/fields/${f.dataset.fx}/preview?` + q, {headers: {'x-requested-with': 'fetch'}})).json();
+        out.className = 'fx-preview small ' + (r.ok ? 'muted' : 'bad');
+        out.replaceChildren();
+        if (!r.ok) { out.textContent = r.error; return; }
+        if (!r.rows.length) { out.textContent = 'Looks good. No records to preview yet.'; return; }
+        const ul = document.createElement('ul'); ul.className = 'fx-rows';
+        r.rows.forEach(x => { const li = document.createElement('li'); const a = document.createElement('span'); a.textContent = x.title;
+          const b = document.createElement('b'); b.textContent = x.error ? '⚠ ' + x.error : x.display; if (x.error) b.className = 'warn';
+          li.append(a, b); ul.append(li); });
+        out.append(Object.assign(document.createElement('span'), {textContent: `Preview (${r.count} record${r.count === 1 ? '' : 's'}):`}), ul);
+      } catch (e) { out.textContent = ''; }
+    }, 250); };
+    src.addEventListener('input', run); fmt && fmt.addEventListener('change', run); if (src.value) run();
+  });
+  document.querySelectorAll('[data-insert]').forEach(b => b.addEventListener('click', () => {
+    const t = last || document.querySelector('#new .fx-src'); if (!t) return;
+    const s = t.selectionStart ?? t.value.length, e = t.selectionEnd ?? s, w = b.dataset.insert;
+    t.value = t.value.slice(0, s) + w + t.value.slice(e); t.focus(); t.selectionStart = t.selectionEnd = s + w.length;
+    t.dispatchEvent(new Event('input'));
+  }));
+})();
+</script>
+{% endblock %}

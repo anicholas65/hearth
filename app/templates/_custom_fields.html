@@ -1,0 +1,11 @@
+{% from "_macros.html" import i, head %}{% set cf = custom_fields_for(cf_kind, cf_id) %}
+{% if cf.fields %}{% set inputs = cf.fields|rejectattr('kind', 'equalto', 'formula')|list %}
+<section class="card cfcard" id="custom">{{ head('Custom fields', 'sliders', '<a class="badge" href="/fields/' ~ cf.kind ~ '">Customize</a>') }}<div class="card-b">
+<div class="facts cf-facts">{% for f in cf.fields %}<div class="{{ 'cf-formula' if f.kind == 'formula' }}"{% if f.kind == 'formula' %} title="= {{ f.formula }}"{% endif %}><span>{{ f.label }}{% if f.kind == 'formula' %} <i class="fx" aria-label="formula">ƒx</i>{% endif %}</span>
+{% if f.error %}<b class="warn" style="font-size:15px">—</b><small class="warn">{{ f.error }}</small>{% else %}<b class="{{ 'num' if f.value is number }}">{{ f.display }}</b>{% endif %}</div>{% endfor %}</div>
+{% if inputs %}<details class="more" style="margin-top:12px"><summary>{{ i('pencil') }} Edit values</summary>
+<form method="post" action="/fields/{{ cf.kind }}/{{ cf.id }}/values" class="form-grid">
+{% for f in inputs %}<label>{{ f.label }}{% if f.kind == 'date' %}<input type="date" name="{{ f.key }}" value="{{ f.raw }}">{% elif f.kind in ('number', 'money') %}<input name="{{ f.key }}" value="{{ f.raw }}" inputmode="decimal" placeholder="{{ '$' if f.kind == 'money' else '0' }}">{% else %}<input name="{{ f.key }}" value="{{ f.raw }}">{% endif %}</label>{% endfor %}
+<div class="actions wide"><button>{{ i('check') }} Save</button></div></form></details>{% endif %}
+</div></section>
+{% else %}<p class="cf-empty"><a href="/fields/{{ cf_kind }}">{{ i('plus') }} Add custom fields &amp; formulas</a></p>{% endif %}

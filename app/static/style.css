@@ -712,3 +712,27 @@ dialog::backdrop{background:rgb(10 12 11 / .5);backdrop-filter:blur(3px)}
 .foot .linkbtn{font-size:inherit;padding:0 2px;color:var(--muted);text-decoration:underline}
 .acct-me{padding:10px 0 12px;border-bottom:1px solid var(--line)}
 .acct-edit{margin-top:4px}
+
+/* search */
+.sfilters{margin:0 0 14px}.sfilters .chip b{font-weight:600;color:var(--muted)}
+.facts-line{color:var(--accent)!important;font-weight:600}
+.shelp{margin-top:18px}.shelp>details>summary{padding:14px 18px;display:flex}
+.shelp code{font-size:12.5px;padding:1px 5px;border-radius:5px;background:var(--surface-2);white-space:nowrap}
+table.kv{border-collapse:collapse;width:100%;font-size:var(--fs-sm)}table.kv td{padding:6px 8px 6px 0;vertical-align:top;border-bottom:1px solid var(--line)}
+table.kv td:first-child{white-space:nowrap;width:1%}
+
+/* custom fields & formulas */
+.fx{font:italic 700 12px/1 Georgia,serif;color:var(--accent);font-style:italic}
+.cf-facts{margin:0}.cf-formula b{color:var(--accent)}
+.cf-empty{margin:-6px 0 14px;font-size:var(--fs-sm)}.cf-empty a{color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.cf-empty a:hover{color:var(--accent)}
+.cf-src{display:block;margin:6px 0 2px;font-size:12.5px;padding:6px 8px;border-radius:7px;background:var(--surface-2);overflow-wrap:anywhere;white-space:pre-wrap}
+.cf-row{align-items:flex-start}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:6px}.form-grid .wide{grid-column:1/-1}
+.fx-src{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+.fx-names{display:flex;flex-wrap:wrap;gap:6px}.chip.sm{min-height:28px;padding:2px 10px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.fx-rows{list-style:none;padding:0;margin:6px 0 0}.fx-rows li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.fx-rows b{color:var(--fg)}.chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.split>*,.home-grid>*{min-width:0}
+table.kv code{white-space:normal;overflow-wrap:anywhere}
+@media (max-width:600px){table.kv td:first-child{white-space:normal;width:45%}}

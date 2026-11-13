@@ -28,6 +28,7 @@
 <div><span>Upkeep spent</span><b>{{ money(spent) if spent else '$0' }}</b><small>{{ history|length }} record{{ 's' if history|length != 1 }}</small></div>
 </div>
 
+{% set cf_kind, cf_id = "items", item.id %}{% include "_custom_fields.html" %}
 <div class="home-grid">
 <div>
 <section class="card" id="maint">{{ head('Maintenance', 'wrench') }}<div class="card-b">

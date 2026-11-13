@@ -6,6 +6,7 @@
 <div class="facts"><div><span>Budget</span><b>{{ money(p.budget) if p.budget else '—' }}</b></div>
 <div><span>Spent</span><b class="{{ 'bad' if p.budget and s.spent > p.budget }}">{{ money(s.spent) if s.spent else '$0' }}</b><small>{{ (s.pct|round|int ~ '% of budget') if s.pct is not none else 'no budget set' }}</small></div>
 <div><span>Materials (planned)</span><b>{{ money(s.planned) if s.planned else '$0' }}</b><small>{{ s.materials|length }} line{{ 's' if s.materials|length != 1 }}</small></div></div>
+{% set cf_kind, cf_id = "projects", p.id %}{% include "_custom_fields.html" %}
 {% if p.notes %}<section class="card"><div class="card-b" style="padding-top:14px;white-space:pre-line">{{ p.notes }}</div></section>{% endif %}
 <div class="split"><div>
 <section class="card" id="materials">{{ head('Materials', 'box') }}<div class="card-b">

@@ -8,6 +8,7 @@
 <div><span>Miles tracked</span><b class="num">{{ '{:,}'.format(s.miles) if s.miles else '—' }}</b></div>
 <div><span>Spent</span><b>{{ money(s.spent) if s.spent else '$0' }}</b><small>service + expenses</small></div>
 <div><span>Cost per mile</span><b>{{ ('$%.2f'|format(s.cpm)) if s.cpm else '—' }}</b><small>{{ 'needs two readings' if not s.cpm }}</small></div></div>
+{% set cf_kind, cf_id = "vehicles", v.id %}{% include "_custom_fields.html" %}
 <div class="split"><div>
 <section class="card">{{ head('Maintenance', 'wrench') }}<div class="card-b">
 {% if s.due %}<div class="list">{% for t in s.due %}<div class="row"><div class="dot {{ 'warn' if t.due_now else 'acc' }}">{{ i('wrench') }}</div>

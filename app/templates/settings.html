@@ -88,6 +88,8 @@
 <form method="post" action="/settings/brand" class="inline"><input type="hidden" name="use" value="{{ '0' if brand.v2 else '1' }}"><button class="{{ 'ghost' if brand.v2 else '' }}">{{ 'Restore original logo' if brand.v2 else 'Use the new logo' }}</button></form>
 <a class="btn ghost sm" href="/static/brand/hearth-logo.svg" download>{{ i('download') }} SVG</a><a class="btn ghost sm" href="/static/brand/icon-512.png" download>{{ i('download') }} PNG icon</a></div>
 </div></section>
+<section class="card" id="fields">{{ head('Custom fields & formulas', 'sliders') }}<div class="card-b"><p style="margin-top:0">Add your own fields to inventory, vehicles and projects, plus formulas that calculate from them. They're searchable like any other field.</p>
+<div class="actions"><a class="btn ghost sm" href="/fields/items">{{ i('box') }} Inventory</a><a class="btn ghost sm" href="/fields/vehicles">{{ i('car') }} Vehicles</a><a class="btn ghost sm" href="/fields/projects">{{ i('star') }} Projects</a></div></div></section>
 <section class="card" id="finances">{{ head('Expense categories', 'tag') }}<div class="card-b">
 <form method="post" action="/settings/categories" class="stack"><label>One per line <span class="hint">Maintenance costs from tasks always use “Maintenance”. Existing entries keep their category.</span>
 <textarea name="categories" rows="7">{{ expense_categories|join('\n') }}</textarea></label><div><button class="ghost">Save categories</button></div></form>

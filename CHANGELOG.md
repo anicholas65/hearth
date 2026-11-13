@@ -1,6 +1,12 @@
 # Changelog
 
 ## 3.2.0
+- **Search**: SQLite FTS5 full-text index with ranking, prefix matching, phrases, exclusions and OR; field filters
+  (`price>500`, `room:kitchen`, `warranty<2027`, `due<+30d`), `in:` and `sort:`; now also covers pantry, vehicles and
+  projects. Falls back to substring matching for partial words.
+- **Custom fields & formulas** for inventory, vehicles and projects (number, money, text, date, or formula), with
+  live preview, examples, dependency ordering and cycle detection. Formulas are parsed with a whitelist; no code runs.
+- Migration v4 (reversible): `custom_fields`, `custom_values`, `search_fts`, `search_state` + triggers.
 - **No AI**: removed the optional Claude photo reading and the `anthropic` dependency. Labels and receipts
   are read on the device (Tesseract.js) or by an optional self-hosted `OCR_URL`; fields are parsed locally.
 

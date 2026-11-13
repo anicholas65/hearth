@@ -156,7 +156,7 @@ def test_migration_v3_reversible(tmp_path):
     con = sqlite3.connect(db); con.executescript(SCHEMA); con.commit(); con.close()
     migrate_up(db)
     con = sqlite3.connect(db)
-    assert current_version(con) == 3
+    assert current_version(con) == 4
     assert "password_hash" in {r[1] for r in con.execute("PRAGMA table_info(members)")}
     con.close()
     migrate_down(db, 2)

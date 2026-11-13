@@ -2,6 +2,14 @@
 
 Self-hosted home manager for Unraid: maintenance reminders, home inventory, photos, documents & manuals, contractors, and budgeting. FastAPI + SQLite, single container.
 
+## What's new in 3.2
+- **Search that understands fields**: ranked full-text search (SQLite FTS5) with prefix matching, phrases, `-exclude`, `OR`,
+  and filters on any field: `room:kitchen price>500`, `warranty<2027`, `due<today`, `in:vehicles sort:-cost_per_mile`.
+- **Custom fields & formulas** on inventory, vehicles and projects: add your own inputs and spreadsheet-style formulas
+  such as `= (price + upkeep) / max(age, 1)`. They show on each record and can be searched and sorted.
+- **No AI**: everything runs locally; receipts and labels are read on the device.
+- **Sign-in** (3.1): per-user accounts, managed in Settings → Accounts.
+
 ## What's new in 3.0 (prototype)
 - **REST API** at `/api/v1` for the Android client: device pairing, sync change feed, idempotent upserts, files. Contract: `docs/openapi.json`.
 - **Tailscale** remote access with HTTPS and tailnet sign-in (`docs/TAILSCALE.md`), installable **PWA** with an offline shopping list.

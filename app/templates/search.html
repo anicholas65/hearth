@@ -1,10 +1,31 @@
-{% extends "base.html" %}{% from "_macros.html" import i, empty %}
+{% extends "base.html" %}{% from "_macros.html" import i, empty, head %}
 {% block title %}Search{% endblock %}{% block content %}
-<div class="page-head"><div><h1>Search</h1>{% if q %}<p>{{ total }} result{{ 's' if total != 1 }} for “{{ q }}”</p>{% endif %}</div></div>
-<form action="/search" class="qa-row" style="margin-bottom:18px"><input name="q" value="{{ q }}" placeholder="Search items, tasks, documents, contractors…" autofocus autocomplete="off"><button>{{ i('search') }} Search</button></form>
-{% if groups %}<div class="grid">{% for g in groups %}<section class="card">{% from "_macros.html" import head %}{{ head(g.label, g.icon, '<span class="badge">' ~ g.rows|length ~ '</span>') }}<div class="card-b">
-{% for r in g.rows %}<a class="sr-row" href="{{ r.href }}"><div class="dot">{{ i(g.icon) }}</div><div><b>{{ r.title|cap|hl(q) }}</b>{% if r.sub %}<small>{{ r.sub|hl(q) }}</small>{% endif %}</div></a>{% endfor %}
+<div class="page-head"><div><h1>Search</h1>{% if q and not errors %}<p>{{ total }} result{{ 's' if total != 1 }} for “{{ q }}”</p>{% endif %}</div></div>
+<form action="/search" class="qa-row" style="margin-bottom:12px"><input name="q" value="{{ q }}" placeholder="fridge · room:kitchen price>500 · warranty<2027 · sort:-price" autofocus autocomplete="off" spellcheck="false" aria-label="Search"><button>{{ i('search') }} Search</button></form>
+{% if filters or sort %}<div class="chips sfilters" aria-label="Filters">{% for f in filters %}<span class="chip">{{ i('sliders') }} {{ f.label }} <b>{{ {':': 'is', '=': 'is', '!=': 'is not', '<': '<', '<=': '≤', '>': '>', '>=': '≥'}[f.op] }}</b> {{ f.value }}</span>{% endfor %}{% if sort %}<span class="chip">{{ i('list') }} sorted by {{ sort[0] }}{{ ' (high → low)' if sort[1] else '' }}</span>{% endif %}</div>{% endif %}
+{% if errors %}<p class="auth-err" role="alert">{{ errors[0] }}</p>{% endif %}
+{% if groups %}<div class="grid">{% for g in groups %}<section class="card">{{ head(g.label, g.icon, '<span class="badge">' ~ g.count ~ '</span>') }}<div class="card-b">
+{% for r in g.rows %}<a class="sr-row" href="{{ r.href }}"><div class="dot">{{ i(g.icon) }}</div><div><b>{{ r.title|cap|hl(q) }}</b>{% if r.sub %}<small>{{ r.sub|hl(q) }}</small>{% endif %}{% if r.facts %}<small class="facts-line">{{ r.facts|join(' · ') }}</small>{% endif %}</div></a>{% endfor %}
+{% if g.count > g.rows|length %}<a class="btn ghost sm" style="margin-top:8px" href="/search?q={{ ('in:' ~ g.kind ~ ' ' ~ q)|urlencode }}&more=1">Show all {{ g.count }}</a>{% endif %}
 </div></section>{% endfor %}</div>
-{% elif q %}<section class="card"><div class="card-b">{% call empty('search', 'Nothing matches “' ~ q ~ '”. Try a brand, room, model number or contractor name.') %}{% endcall %}</div></section>
-{% else %}<p class="muted">Search across inventory (name, brand, model, serial, room), tasks, schedule, documents, contractors, shopping, photo captions and budget notes. Press <kbd>/</kbd> anywhere to jump here.</p>{% endif %}
+{% elif q and not errors %}<section class="card"><div class="card-b">{% call empty('search', 'Nothing matches “' ~ q ~ '”. Try fewer words, part of a word, or a different filter.') %}{% endcall %}</div></section>{% endif %}
+<section class="card shelp"><details{{ ' open' if not q }}><summary>{{ i('info') }} How to search</summary><div class="card-b">
+<div class="split" style="gap:18px"><div>
+<table class="kv"><tbody>
+<tr><td><code>fridge</code></td><td>words anywhere; the start of a word works too (<code>refrig</code>)</td></tr>
+<tr><td><code>"wine fridge"</code></td><td>exact phrase</td></tr>
+<tr><td><code>filter -bosch</code></td><td>leave out a word</td></tr>
+<tr><td><code>furnace OR boiler</code></td><td>either word</td></tr>
+<tr><td><code>room:kitchen</code></td><td>field contains text</td></tr>
+<tr><td><code>price&gt;500</code> <code>life&lt;=10</code></td><td>compare numbers (<code>&gt; &lt; &gt;= &lt;= =</code>)</td></tr>
+<tr><td><code>warranty&lt;2027</code> <code>purchased:2019-06</code></td><td>dates: a year, month or day</td></tr>
+<tr><td><code>due&lt;today</code> <code>warranty&lt;+90d</code></td><td>relative dates (d, w, m, y)</td></tr>
+<tr><td><code>in:vehicles</code></td><td>only one kind of record</td></tr>
+<tr><td><code>sort:-cost_per_mile</code></td><td>sort (<code>-</code> = highest first)</td></tr>
+</tbody></table>
+<p class="muted small">Try: {% for ex in ['room:kitchen sort:-price', 'warranty<+1y in:items', 'upkeep>0 sort:-upkeep', 'due<today in:tasks'] %}<a class="chip" href="/search?q={{ ex|urlencode }}">{{ ex }}</a> {% endfor %}</p>
+</div><div>
+{% for label, cat in field_help.items() %}<p class="small" style="margin:0 0 8px"><b>{{ label }}:</b> {% for key, f in cat.items() %}<code title="{{ f.label }}{{ ' = ' ~ f.formula if f.formula }}">{{ key }}</code>{{ ' ' }}{% endfor %}</p>{% endfor %}
+<p class="muted small">Custom fields and formulas you add (<a href="/fields/items">Inventory</a>, <a href="/fields/vehicles">Vehicles</a>, <a href="/fields/projects">Projects</a>) can be searched the same way.</p>
+</div></div></div></details></section>
 {% endblock %}
