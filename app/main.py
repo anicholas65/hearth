@@ -1,7 +1,5 @@
 import asyncio
-import base64
 import os
-import secrets
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -338,19 +336,11 @@ async def capture_parse(request: Request):
 
 @app.post("/capture/ocr")
 async def capture_ocr(image: UploadFile = File(...), mode: str = Form("receipt")):
-    """Server-side reading: Claude vision (text + fields) or an OCR_URL service (text only)."""
+    """Server-side reading through an OCR_URL service (text only; fields are parsed locally)."""
     from . import capture
-    provider = capture.ocr_provider()
-    if not provider:
+    if not capture.ocr_provider():
         raise HTTPException(501, "Server reading isn't configured; the browser reads the text instead")
     data = await image.read()
-    if provider == "claude":
-        import asyncio as _asyncio
-        try:
-            out = await _asyncio.to_thread(capture.claude_read, data, mode)
-        except RuntimeError as e:
-            raise HTTPException(502, str(e))
-        return {**out, "provider": "claude"}
     return {"text": capture.ocr_remote(data, image.content_type or "image/jpeg"), "provider": "url"}
 
 

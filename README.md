@@ -6,7 +6,7 @@ Self-hosted home manager for Unraid: maintenance reminders, home inventory, phot
 - **REST API** at `/api/v1` for the Android client: device pairing, sync change feed, idempotent upserts, files. Contract: `docs/openapi.json`.
 - **Tailscale** remote access with HTTPS and tailnet sign-in (`docs/TAILSCALE.md`), installable **PWA** with an offline shopping list.
 - **Today · Plan · Stuff · Budget**, staggered maintenance with Rebalance, freshness bars, command palette (`/`), swipe gestures.
-- **Capture**: barcode lookup, label and receipt reading (in-browser, or Claude with `ANTHROPIC_API_KEY`).
+- **Capture**: barcode lookup, label and receipt reading on the device (Tesseract.js) — no AI services.
 - **Budget**: sinking funds, cost of ownership, insurance claim packet PDF. **Pantry**, **Vehicles**, **Projects & Hobbies**.
 - `HEARTH_DEMO=1` runs on sample data in `/data/demo`. Details: `docs/PROTOTYPE_REPORT.md`.
 
@@ -64,9 +64,7 @@ Optional env overrides: `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE`. Tim
 | `HEARTH_USERNAME` / `HEARTH_PASSWORD` | – | optional: creates this owner account on first start (otherwise Hearth asks you to create one) |
 | `HEARTH_AUTH` | `on` | `off` disables sign-in (only on a network you fully trust) |
 | `HEARTH_PUBLIC_URL` | – | address paired devices use (Tailscale HTTPS URL) |
-| `ANTHROPIC_API_KEY` | – | optional: Claude reads receipt/label photos |
-| `HEARTH_CLAUDE_MODEL` | `claude-opus-5-5` | model for photo reading |
-| `OCR_URL` / `OCR_PROVIDER` | – | alternative OCR service / force `claude` or `url` |
+| `OCR_URL` | – | optional self-hosted OCR service (POST image → `{"text"}`) |
 | `HEARTH_DEMO` | `0` | `1` = sample data in `/data/demo` |
 | `PORT` | `8080` | |
 

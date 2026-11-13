@@ -161,23 +161,12 @@ def parse_receipt(text: str) -> dict:
 
 
 # ---------------- server-side reading (optional) ----------------
-# Providers, chosen by OCR_PROVIDER (claude | url) or automatically:
-#   claude - Claude vision via the Anthropic SDK; needs ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) in the
-#            container environment, never in files. Returns text + structured fields in one call.
-#   url    - POST the image to OCR_URL (e.g. a local model wrapper) → {"text": "..."}.
-# With neither configured, the browser reads the photo with Tesseract.js.
-
-CLAUDE_MODEL = os.environ.get("HEARTH_CLAUDE_MODEL", "claude-opus-5-5")
+# If OCR_URL is set, photos are POSTed there (e.g. a self-hosted Tesseract/PaddleOCR wrapper) → {"text": "..."}.
+# Otherwise the browser reads the photo with Tesseract.js. Fields are always parsed locally (parse_label/receipt).
 
 
 def ocr_provider() -> str | None:
-    pref = os.environ.get("OCR_PROVIDER", "").lower()
-    has_claude = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
-    if pref == "claude" or (not pref and has_claude):
-        return "claude" if has_claude else None
-    if pref == "url" or (not pref and os.environ.get("OCR_URL")):
-        return "url" if os.environ.get("OCR_URL") else None
-    return None
+    return "url" if os.environ.get("OCR_URL") else None
 
 
 def ocr_available() -> bool:
@@ -189,82 +178,6 @@ def ocr_remote(data: bytes, mime: str) -> str:
     r = requests.post(os.environ["OCR_URL"], files={"image": ("capture", data, mime)}, timeout=60)
     r.raise_for_status()
     return r.json().get("text", "")
-
-
-_FIELDS = {
-    "label": {"brand": "string", "model": "string", "serial": "string", "manufactured": "string"},
-    "receipt": {"store": "string", "date": "string", "total": "number"},
-}
-_PROMPTS = {
-    "label": ("This is a photo of an appliance or equipment rating label. Transcribe all legible text, then "
-              "extract the brand, model number and serial number exactly as printed (no spaces added or removed), "
-              "and the manufacture date as YYYY-MM if shown. Use an empty string for anything not legible."),
-    "receipt": ("This is a photo of a purchase receipt. Transcribe all legible text, then extract the store name, "
-                "the purchase date as YYYY-MM-DD, and the final total actually paid (the grand total, not a "
-                "subtotal, tax or change line). Use an empty string or 0 for anything not legible."),
-}
-
-
-def _shrink(data: bytes) -> tuple[bytes, str]:
-    """Downscale to ≤1568px JPEG: plenty for reading labels, and far fewer image tokens."""
-    import io as _io
-
-    from PIL import Image, ImageOps
-    img = ImageOps.exif_transpose(Image.open(_io.BytesIO(data))).convert("RGB")
-    img.thumbnail((1568, 1568))
-    out = _io.BytesIO()
-    img.save(out, "JPEG", quality=88)
-    return out.getvalue(), "image/jpeg"
-
-
-def claude_read(data: bytes, mode: str, client=None) -> dict:
-    """Read a label/receipt photo with Claude. Returns {"text", "fields"}; raises RuntimeError on failure."""
-    import base64
-    import json as _json
-
-    import anthropic
-    mode = mode if mode in _FIELDS else "receipt"
-    img, mime = _shrink(data)
-    props = {"text": {"type": "string"}, **{k: {"type": v} for k, v in _FIELDS[mode].items()}}
-    client = client or anthropic.Anthropic()  # credentials from the environment
-    try:
-        resp = client.beta.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=16000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",  # a declined request is retried server-side on a suitable model
-            output_config={
-                "effort": "low",  # simple extraction
-                "format": {"type": "json_schema", "schema": {
-                    "type": "object", "properties": props, "required": list(props), "additionalProperties": False}},
-            },
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": mime,
-                                             "data": base64.standard_b64encode(img).decode("ascii")}},
-                {"type": "text", "text": _PROMPTS[mode]},
-            ]}],
-        )
-    except anthropic.AuthenticationError:
-        raise RuntimeError("Claude rejected the API key (check ANTHROPIC_API_KEY)")
-    except anthropic.RateLimitError:
-        raise RuntimeError("Claude is rate limited right now; try again in a minute")
-    except anthropic.BadRequestError as e:
-        raise RuntimeError(f"Claude couldn't process this image: {e.message}")
-    except anthropic.APIStatusError as e:
-        raise RuntimeError(f"Claude error {e.status_code}")
-    except anthropic.APIConnectionError:
-        raise RuntimeError("Couldn't reach Claude (network)")
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("Claude declined to read this image")
-    text = next((b.text for b in resp.content if b.type == "text"), "")
-    try:
-        out = _json.loads(text)
-    except ValueError:
-        raise RuntimeError("Claude returned an unreadable answer")
-    fields = {k: v for k, v in out.items() if k != "text" and v not in ("", None, 0, 0.0)}
-    if mode == "label":
-        fields = {k: (_clean(v) if k in ("model", "serial") else v) for k, v in fields.items()}
-    return {"text": out.get("text", ""), "fields": fields}
 
 
 # ---------------- manuals ----------------

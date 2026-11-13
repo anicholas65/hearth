@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.2.0
+- **No AI**: removed the optional Claude photo reading and the `anthropic` dependency. Labels and receipts
+  are read on the device (Tesseract.js) or by an optional self-hosted `OCR_URL`; fields are parsed locally.
+
 ## 3.1.0
 - **Sign-in**: per-user accounts with a sign-in page. The first visit creates the owner account; owners add,
   reset and remove household accounts in Settings → Accounts; everyone can change their own password and

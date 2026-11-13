@@ -57,7 +57,7 @@
 <label class="chk"><input type="checkbox" name="set_purchase" value="1" checked> Use as the item's purchase price and date (if empty)</label>
 <div><button>{{ i('check') }} Save receipt</button></div></form>
 {% endif %}
-<p class="muted small" style="margin:10px 0 0">{% if ocr_provider == 'claude' %}Photos are read by Claude (Anthropic API).{% elif ocr_provider == 'url' %}Photos are read by your OCR service.{% else %}Text is read on this device.{% endif %} Check the fields before saving.</p>
+<p class="muted small" style="margin:10px 0 0">{% if ocr_provider == 'url' %}Photos are read by your OCR service.{% else %}Text is read on this device.{% endif %} Check the fields before saving.</p>
 </div></section></div>
 {% endif %}
 
@@ -66,7 +66,7 @@
 // (loaded on demand); if the server has OCR_URL configured, it is tried first.
 window.HearthOCR = window.HearthOCR || {
   server: {{ 'true' if ocr_server else 'false' }},
-  // Returns {text, fields?}: server providers may extract fields directly (Claude does).
+  // Returns {text}; fields are parsed from the text on the server.
   async recognize(file, progress, mode) {
     if (this.server) {
       try { const fd = new FormData(); fd.append('image', file); fd.append('mode', mode || 'receipt');

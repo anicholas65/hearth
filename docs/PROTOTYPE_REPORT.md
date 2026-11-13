@@ -22,7 +22,6 @@ Screenshots below were taken with Playwright in demo mode (`HEARTH_DEMO=1`), dar
 Required tests: auth, pairing (`tests/test_api.py`), change feed, idempotent upserts and LWW (`test_api.py`), header-trust rule (`tests/test_tailnet.py`), task staggering (`tests/test_plan.py`).
 
 ## Stubbed or partial
-- **Claude photo reading** is implemented to the Anthropic SDK's documented API and unit-tested with a fake client, but **not exercised live** (no API key on the build machine).
 - **Tailscale** paths are tested with simulated loopback/LAN peers; not yet run on a real tailnet or Unraid's native toggle (the image runs as `nobody`; the sidecar is the fallback if the toggle needs root).
 - **Push**: Hearth publishes to ntfy through Apprise and exposes `/notify-config`; there is no Web Push (no Firebase, by design). Phones need the ntfy app or web subscription.
 - **Product lookup for goods** uses UPCitemdb's free trial endpoint (rate-limited); groceries via Open Food Facts are solid.
@@ -39,7 +38,7 @@ Required tests: auth, pairing (`tests/test_api.py`), change feed, idempotent ups
 
 ## Next steps
 1. Push → CI image → update on Unraid; enable Tailscale (Option A, else B) and pair the Android app.
-2. Add `ANTHROPIC_API_KEY` to try Claude reading on real receipts/labels; set `HEARTH_CLAUDE_MODEL=claude-haiku-5-5` if cost matters more than accuracy.
+2. (Removed in 3.2: Hearth has no AI integration; photos are read on-device.)
 3. Android client against `docs/openapi.json` (pair → `/changes` loop → `PUT` writes with client UUIDs + `updated_at`).
 4. Expose appointments in the API; changelog pruning; per-member assignment of tasks.
 5. Self-host ZXing/Tesseract assets for fully offline capture.
